@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{37B13A5A-8FD4-4F60-9829-EE488993EA78}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>Lightsaber</RootNamespace>
+    <AssemblyName>Lightsaber</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <Deterministic>true</Deterministic>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>L:\SteamLibrary\steamapps\common\RimWorld\Mods\Project Lightsaber\1.5\Assemblies\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="CompColorCrystal.cs" />
+    <Compile Include="CompGlower_Options.cs" />
+    <Compile Include="Comp_LightsaberStance.cs" />
+    <Compile Include="DamageWorker_Lightsaber.cs" />
+    <Compile Include="Dialogs.cs" />
+    <Compile Include="FleckThrownSparks.cs" />
+    <Compile Include="ForceLightsabers_ModSettings.cs" />
+    <Compile Include="GenStep_ScatterLightsaberCrystals .cs" />
+    <Compile Include="Graphic_Hilts.cs" />
+    <Compile Include="HarmonyPatches.cs" />
+    <Compile Include="Hediff_LightsaberDeflection.cs" />
+    <Compile Include="HiltDef.cs" />
+    <Compile Include="HiltManager.cs" />
+    <Compile Include="JobDriver_UpgradeLightsaber.cs" />
+    <Compile Include="Job_UpgradeLightsaber.cs" />
+    <Compile Include="LightsaberCombatUtility.cs" />
+    <Compile Include="LightsaberDefOf.cs" />
+    <Compile Include="LightsaberGraphicUtils.cs" />
+    <Compile Include="LightsaberProjectile.cs" />
+    <Compile Include="LightsaberStanceGizmo.cs" />
+    <Compile Include="LoadLightsaberShader.cs" />
+    <Compile Include="ModExtension_LightsaberPresets.cs" />
+    <Compile Include="ModExtension_LinkedSound.cs" />
+    <Compile Include="ShaderPropertyIDAddon.cs" />
+    <Compile Include="StuffColorSelectionWIndow.cs" />
+    <Compile Include="StuffColorUtility.cs" />
+    <Compile Include="ThingComp_LightsaberBlade.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Krafs.Rimworld.Ref">
+      <Version>1.5.4402</Version>
+    </PackageReference>
+    <PackageReference Include="Lib.Harmony">
+      <Version>2.3.5</Version>
+    </PackageReference>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>
