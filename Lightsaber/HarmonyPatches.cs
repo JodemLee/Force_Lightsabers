@@ -16,8 +16,6 @@ namespace Lightsaber
         {
             harmonyPatch = new Harmony("Lightsabers_ForceThe");
             var type = typeof(HarmonyPatches);
-            harmonyPatch.Patch(AccessTools.Method(typeof(PawnRenderUtility), nameof(PawnRenderUtility.DrawEquipmentAiming)),
-               prefix: new HarmonyMethod(type, nameof(DrawEquipmentAimingPreFix)));
             harmonyPatch.PatchAll();
         }
 
@@ -25,59 +23,65 @@ namespace Lightsaber
         private static CompCache compCache = new CompCache();
         private static bool meleeAnimationModActive;
 
-        public static bool DrawEquipmentAimingPreFix(Thing eq, Vector3 drawLoc, float aimAngle)
+        [HarmonyPatch(typeof(PawnRenderUtility), "DrawEquipmentAiming")]
+        public static class LightsaberDrawer
         {
-            var eqPrimary = eq;
-            if (meleeAnimationModActive || eqPrimary == null || eqPrimary.def?.graphicData == null)
+            [HarmonyPrefix]
+            public static bool DrawEquipmentAimingPreFix(Thing eq, Vector3 drawLoc, float aimAngle)
             {
+                var eqPrimary = eq;
+                if (meleeAnimationModActive || eqPrimary == null || eqPrimary.def?.graphicData == null)
+                {
+                    return true;
+                }
+
+                var compLightsaberBlade = compCache.GetCachedComp(eqPrimary);
+                if (compLightsaberBlade != null)
+                {
+                    bool flip = false;
+                    float angle = aimAngle - 90f;
+
+                    if (aimAngle > 20f && aimAngle < 160f)
+                    {
+                        angle += compLightsaberBlade.CurrentRotation;
+                    }
+                    else if (aimAngle > 200f && aimAngle < 340f)
+                    {
+                        flip = false;
+                        angle -= 180f + compLightsaberBlade.CurrentRotation;
+                    }
+                    else
+                    {
+                        angle += compLightsaberBlade.CurrentRotation;
+                    }
+                    angle = compLightsaberBlade.CurrentRotation;
+
+                    if (compLightsaberBlade.IsAnimatingNow)
+                    {
+                        float animationTicks = compLightsaberBlade.AnimationDeflectionTicks;
+                        if (!Find.TickManager.Paused && compLightsaberBlade.IsAnimatingNow)
+                            compLightsaberBlade.AnimationDeflectionTicks -= 20;
+                        float targetAngle = compLightsaberBlade.lastInterceptAngle;
+                        angle = Mathf.Lerp(angle, targetAngle, 0.1f);
+
+                        if (animationTicks > 0)
+                        {
+                            if (flip)
+                                angle -= (animationTicks + 1) / 2;
+                            else
+                                angle += (animationTicks + 1) / 2;
+                        }
+                    }
+                    angle %= 360f;
+                    Vector3 offset = compLightsaberBlade.CurrentDrawOffset;
+                    LightsaberGraphicsUtil.DrawLightsaberGraphics(eqPrimary, drawLoc + offset, angle, flip, compLightsaberBlade);
+
+                    return false;
+                }
                 return true;
             }
-
-            var compLightsaberBlade = compCache.GetCachedComp(eqPrimary);
-            if (compLightsaberBlade != null)
-            {
-                bool flip = false;
-                float angle = aimAngle - 90f;
-
-                if (aimAngle > 20f && aimAngle < 160f)
-                {
-                    angle += compLightsaberBlade.CurrentRotation;
-                }
-                else if (aimAngle > 200f && aimAngle < 340f)
-                {
-                    flip = false;
-                    angle -= 180f + compLightsaberBlade.CurrentRotation;
-                }
-                else
-                {
-                    angle += compLightsaberBlade.CurrentRotation;
-                }
-                angle = compLightsaberBlade.CurrentRotation;
-
-                if (compLightsaberBlade.IsAnimatingNow)
-                {
-                    float animationTicks = compLightsaberBlade.AnimationDeflectionTicks;
-                    if (!Find.TickManager.Paused && compLightsaberBlade.IsAnimatingNow)
-                        compLightsaberBlade.AnimationDeflectionTicks -= 20;
-                    float targetAngle = compLightsaberBlade.lastInterceptAngle;
-                    angle = Mathf.Lerp(angle, targetAngle, 0.1f);
-
-                    if (animationTicks > 0)
-                    {
-                        if (flip)
-                            angle -= (animationTicks + 1) / 2;
-                        else
-                            angle += (animationTicks + 1) / 2;
-                    }
-                }
-                angle %= 360f;
-                Vector3 offset = compLightsaberBlade.CurrentDrawOffset;
-                LightsaberGraphicsUtil.DrawLightsaberGraphics(eqPrimary, drawLoc + offset, angle, flip, compLightsaberBlade);
-
-                return false;
-            }
-            return true;
         }
+
 
         [HarmonyPatch(typeof(Pawn_DraftController), "set_Drafted")]
         public static class Pawn_DraftedPatch
@@ -159,27 +163,43 @@ namespace Lightsaber
         {
             public static bool Prefix(Projectile __instance)
             {
-                if (__instance.usedTarget.Thing is Pawn pawn)
+                try
                 {
-                    if (pawn.health.hediffSet.GetFirstHediffOfDef(LightsaberDefOf.Lightsaber_Stance) is Hediff_LightsaberDeflection hediff)
+                    if (__instance == null) return true;
+                    var targetThing = __instance.usedTarget.Thing;
+                    if (!(targetThing is Pawn pawn)) return true;
+                    var hediff = pawn.health?.hediffSet?.GetFirstHediffOfDef(LightsaberDefOf.Lightsaber_Stance)
+                        as Hediff_LightsaberDeflection;
+
+                    if (hediff != null)
                     {
-                        if (hediff.ShouldDeflectProjectile(__instance) && __instance.Launcher != pawn)
+                        if (__instance.Launcher != pawn &&
+                            hediff.ShouldDeflectProjectile(__instance))
                         {
                             hediff.DeflectProjectile(__instance);
                             return false;
                         }
+                        return true;
                     }
-                    else if (pawn.equipment?.Primary?.TryGetComp<Comp_LightsaberStance>() is Comp_LightsaberStance lightsaberComp)
+                    var primaryEquipment = pawn.equipment?.Primary;
+                    if (primaryEquipment != null)
                     {
-                        // You might want to add a ShouldDeflect check here too
-                        if (LightsaberCombatUtility.ShouldDeflectProjectile(pawn, __instance))
+                        var lightsaberComp = primaryEquipment.TryGetComp<Comp_LightsaberStance>();
+                        if (lightsaberComp != null &&
+                            LightsaberCombatUtility.ShouldDeflectProjectile(pawn, __instance))
                         {
                             LightsaberCombatUtility.RedirectProjectile(__instance, pawn);
                             return false;
                         }
                     }
+
+                    return true;
                 }
-                return true;
+                catch (Exception ex)
+                {
+                    Log.Error($"Error in Projectile.ImpactSomething patch: {ex}");
+                    return true;
+                }
             }
         }
 
@@ -287,5 +307,5 @@ namespace Lightsaber
                 return new DamageResult();
             }
         }
-    }    
+    }
 }

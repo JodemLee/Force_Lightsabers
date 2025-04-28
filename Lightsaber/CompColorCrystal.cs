@@ -37,8 +37,4 @@ namespace Lightsaber
             this.compClass = typeof(CompColorCrystal);
         }
     }
-
-
-
-   
 }

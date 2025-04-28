@@ -21,11 +21,6 @@ namespace Lightsaber
 
         public override bool ShouldDrawRotated => data == null || data.drawRotated;
 
-        // Methods
-
-        /// <summary>
-        /// Initializes the graphic with the given request.
-        /// </summary>
         public override void Init(GraphicRequest req)
         {
             data = req.graphicData;
@@ -38,9 +33,6 @@ namespace Lightsaber
             UpdateMaterial(req);
         }
 
-        /// <summary>
-        /// Updates the material based on the given request.
-        /// </summary>
         public void UpdateMaterial(GraphicRequest req)
         {
             MaterialRequest materialRequest = new MaterialRequest
@@ -61,16 +53,12 @@ namespace Lightsaber
             mat = MaterialPool.MatFrom(materialRequest);
         }
 
-        /// <summary>
-        /// Links this graphic to the given HiltManager.
-        /// </summary>
         public void LinkToHiltManager(HiltManager manager)
         {
             if (manager == null) return;
 
             hiltManager = manager;
 
-            // Always update the material when the hilt changes
             if (hiltManager.SelectedHilt?.graphicData != null)
             {
                 GraphicRequest request = new GraphicRequest(
@@ -86,9 +74,8 @@ namespace Lightsaber
                     hiltManager.SelectedHilt.graphicData.maskPath
                 );
 
-                // Force material to reset
                 path = hiltManager.SelectedHilt.graphicData.texPath;
-                mat = null;  // Invalidate the cached material
+                mat = null;
                 UpdateMaterial(request);
             }
         }

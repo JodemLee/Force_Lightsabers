@@ -75,7 +75,7 @@ namespace Lightsaber
             // Draw title
             Text.Font = GameFont.Medium;
             Rect titleRect = new Rect(inRect.x, inRect.y, inRect.width, TitleHeight);
-            Widgets.Label(titleRect, "Lightsaber Customization");
+            Widgets.Label(titleRect, "Force_LightsaberCustomization".Translate());
             Text.Font = GameFont.Small;
 
             // Main content area
@@ -132,7 +132,7 @@ namespace Lightsaber
                 }
 
                 Text.Anchor = TextAnchor.MiddleCenter;
-                Widgets.Label(tabRect, tab == Tab.RGBSelector ? "Blade Colors" : "Hilt Customization");
+                Widgets.Label(tabRect, tab == Tab.RGBSelector ? "Force_BladeColor".Translate() : "Force_HiltAttribute".Translate());
                 Text.Anchor = TextAnchor.UpperLeft;
 
                 if (Widgets.ButtonInvisible(tabRect))
@@ -243,27 +243,27 @@ namespace Lightsaber
                 // Blade length section
                 yPos = DrawSectionWithHeader(ref yPos, leftColumn.width, "Blade Settings", () =>
                 {
-                    yPos = DrawBladeLengthSlider("Primary Blade Length", ref lightsaberBlade.bladeLength, leftColumn.width, yPos);
-                    yPos = DrawVibrationSlider("Vibration Frequency", ref lightsaberBlade.vibrationrate, leftColumn.width, yPos);
+                    yPos = DrawBladeLengthSlider("Force_VariableBlade1".Translate(), ref lightsaberBlade.bladeLength, leftColumn.width, yPos);
+                    yPos = DrawVibrationSlider("Force_Vibration1".Translate(), ref lightsaberBlade.vibrationrate, leftColumn.width, yPos);
 
                     if (HasSecondBlade)
                     {
-                        yPos = DrawBladeLengthSlider("Secondary Blade Length", ref lightsaberBlade.bladeLength2, leftColumn.width, yPos);
-                        yPos = DrawVibrationSlider("Secondary Vibration", ref lightsaberBlade.vibrationrate2, leftColumn.width, yPos);
+                        yPos = DrawBladeLengthSlider("Force_VariableBlade2".Translate(), ref lightsaberBlade.bladeLength2, leftColumn.width, yPos);
+                        yPos = DrawVibrationSlider("Force_Vibration2".Translate(), ref lightsaberBlade.vibrationrate2, leftColumn.width, yPos);
                     }
 
                     return yPos;
                 });
 
                 // Sound selector
-                yPos = DrawSectionWithHeader(ref yPos, leftColumn.width, "Sound Effects", () =>
+                yPos = DrawSectionWithHeader(ref yPos, leftColumn.width, "Force_SoundSelector".Translate(), () =>
                 {
                     DrawSoundSelector(new Rect(0, yPos, leftColumn.width, 150f), yPos);
                     return yPos + 160f;
                 });
 
                 // Color presets moved here
-                yPos = DrawSectionWithHeader(ref yPos, leftColumn.width, "Color Presets", () =>
+                yPos = DrawSectionWithHeader(ref yPos, leftColumn.width, "Force_Presets".Translate(), () =>
                 {
                     DrawPresets(new Rect(0, yPos, leftColumn.width, 120f));
                     return yPos + 130f;
@@ -281,7 +281,7 @@ namespace Lightsaber
                 float yPos = 0;
 
                 // Primary blade colors
-                yPos = DrawSectionWithHeader(ref yPos, rightColumn.width, "Primary Blade Colors", () =>
+                yPos = DrawSectionWithHeader(ref yPos, rightColumn.width, "Force_PrimaryColor".Translate(), () =>
                 {
                     yPos = DrawColorPicker(ref yPos, rightColumn.width, ref bladeColorRed, ref bladeColorGreen, ref bladeColorBlue, ref bladeColorAlpha, "Blade");
                     yPos = DrawColorPicker(ref yPos, rightColumn.width, ref coreColorRed, ref coreColorGreen, ref coreColorBlue, ref coreColorAlpha, "Core");
@@ -291,7 +291,7 @@ namespace Lightsaber
                 // Secondary blade colors (if applicable)
                 if (HasSecondBlade)
                 {
-                    yPos = DrawSectionWithHeader(ref yPos, rightColumn.width, "Secondary Blade Colors", () =>
+                    yPos = DrawSectionWithHeader(ref yPos, rightColumn.width, "Force_SecondaryColor".Translate(), () =>
                     {
                         yPos = DrawColorPicker(ref yPos, rightColumn.width, ref bladeColor2Red, ref bladeColor2Green, ref bladeColor2Blue, ref bladeColor2Alpha, "Secondary Blade");
                         yPos = DrawColorPicker(ref yPos, rightColumn.width, ref coreColor2Red, ref coreColor2Green, ref coreColor2Blue, ref coreColor2Alpha, "Secondary Core");
@@ -338,7 +338,7 @@ namespace Lightsaber
             Widgets.Label(labelRect, label);
 
             // Randomize button
-            if (Widgets.ButtonText(new Rect(labelRect.xMax + elementSpacing, yPos, randomizeButtonWidth, labelRect.height), "Randomize"))
+            if (Widgets.ButtonText(new Rect(labelRect.xMax + elementSpacing, yPos, randomizeButtonWidth, labelRect.height), "Force_Randomize".Translate()))
             {
                 RandomizeRGBValues(ref red, ref green, ref blue);
                 UpdateCurrentColor();
@@ -532,23 +532,27 @@ namespace Lightsaber
 
             // Initialize presets with basic colors
             var presets = new Dictionary<string, Color>
-    {
-        { "Blue", new Color(0, 0, 1) },
-        { "Red", new Color(1, 0, 0) },
-        { "Green", new Color(0, 1, 0) },
-        { "Yellow", new Color(1, 1, 0) },
-        { "Purple", new Color(0.5f, 0, 0.5f) },
-        { "Orange", new Color(1, .64f, 0) },
-        { "White", new Color(1, 1, 1) },
-        { "Cyan", new Color(0, 1, 1) },
-        { "Magenta", new Color(1, 0, 1) }
-    };
+                {
+                    { "Blue", new Color(0, 0, 1) },
+                    { "Red", new Color(1, 0, 0) },
+                    { "Green", new Color(0, 1, 0) },
+                    { "Yellow", new Color(1, 1, 0) },
+                    { "Purple", new Color(0.5f, 0, 0.5f) },
+                    { "Orange", new Color(1, .64f, 0) },
+                    { "White", new Color(1, 1, 1) },
+                    { "Cyan", new Color(0, 1, 1) },
+                    { "Magenta", new Color(1, 0, 1) }
+                };
 
-            // Add special presets
-            HiltPartDef selectedCrystal = lightsaberBlade.HiltManager.GetHiltPartByCategory(HiltPartCategory.Crystal);
-            if (selectedCrystal?.colorGenerator != null)
+
+            var colorPart = lightsaberBlade.HiltManager.SelectedHiltParts
+                            .FirstOrDefault(p => p.colorGenerator != null &&
+                                                p.category != null &&
+                                                p.category.canChangeColor);
+
+            if (colorPart != null)
             {
-                presets.Add("Crystal", selectedCrystal.colorGenerator.NewRandomizedColor());
+                presets.Add($"{colorPart.category.label} Color", colorPart.colorGenerator.NewRandomizedColor());
             }
 
             if (ModsConfig.IdeologyActive && pawn != null)
@@ -697,20 +701,21 @@ namespace Lightsaber
             float startX = (width - totalWidth) / 2; // Center the group of buttons
 
             // Previous button (leftmost)
-            if (Widgets.ButtonText(new Rect(startX, yPos, buttonWidth, controlHeight), "< Previous"))
+            if (Widgets.ButtonText(new Rect(startX, yPos, buttonWidth, controlHeight), "Force_Previous".Translate()))
             {
                 CycleHilt(-1);
             }
 
+
             // Current hilt button (middle)
-            string hiltLabel = lightsaberBlade?.HiltManager?.SelectedHilt?.label ?? "Select Hilt";
+            string hiltLabel = lightsaberBlade?.HiltManager?.SelectedHilt?.label ?? "Force_SelectHilt".Translate();
             if (Widgets.ButtonText(new Rect(startX + buttonWidth + spacing, yPos, buttonWidth, controlHeight), hiltLabel))
             {
                 ShowHiltSelectionMenu();
             }
 
             // Next button (rightmost)
-            if (Widgets.ButtonText(new Rect(startX + (buttonWidth + spacing) * 2, yPos, buttonWidth, controlHeight), "Next >"))
+            if (Widgets.ButtonText(new Rect(startX + (buttonWidth + spacing) * 2, yPos, buttonWidth, controlHeight), "Force_Next".Translate()))
             {
                 CycleHilt(1);
             }
@@ -762,143 +767,169 @@ namespace Lightsaber
 
         private void DrawHiltPartSelection(Rect rect)
         {
-            // Draw section header with extra top padding
+            // Constants for consistent spacing
+            const float headerTopPadding = 5f;
+            const float sectionPadding = 5f;
+            const float categorySpacing = 8f;
+
+            // Draw section header
             Text.Font = GameFont.Medium;
-            Rect headerRect = new Rect(5, 5, rect.width - 10, 32f);
+            Rect headerRect = new Rect(headerTopPadding, headerTopPadding, rect.width - headerTopPadding * 2, 32f);
             Widgets.Label(headerRect, "Hilt Components");
             Text.Font = GameFont.Small;
 
-            // Calculate content height with safe margins
-            float contentHeight = rect.height - headerRect.height - 15f;
-            float totalHeight = CalculateHiltPartsTotalHeight();
+            // Calculate content area (below header)
+            float contentHeight = rect.height - headerRect.height - headerTopPadding * 2;
+            Rect contentRect = new Rect(0, headerRect.yMax + sectionPadding, rect.width, contentHeight);
 
-            // Scroll view with proper margins
-            Rect viewRect = new Rect(0, headerRect.yMax + 5, rect.width, contentHeight);
-            Rect scrollRect = new Rect(0, 0, rect.width - 16f, totalHeight + 30f); // Extra buffer at bottom
+            List<HiltPartCategoryDef> orderedCategories = lightsaberBlade.Props.allowedCategories ?? new List<HiltPartCategoryDef>();
+    
+    // Get all hilt parts first
+    var allHiltParts = DefDatabase<HiltPartDef>.AllDefsListForReading;
+    
+    // Find categories that actually have parts available
+    var availableCategories = orderedCategories
+        .Where(oc => oc != null && allHiltParts.Any(p => p?.category == oc)) // Compare def references directly
+        .ToList();
 
-            // Reset scroll position if it would leave empty space at bottom
-            if (hiltComponentsScrollPos.y > totalHeight - viewRect.height)
-            {
-                hiltComponentsScrollPos.y = Mathf.Max(0, totalHeight - viewRect.height);
-            }
+    Log.Message($"Ordered Categories: {orderedCategories.Count}, Available Categories: {availableCategories.Count}");
+    
+    // Debug output to see what's happening
+    foreach (var cat in orderedCategories)
+    {
+        int partCount = allHiltParts.Count(p => p?.category == cat);
+        Log.Message($"Category {cat?.defName ?? "NULL"} has {partCount} parts");
+    }
 
-            Widgets.BeginScrollView(viewRect, ref hiltComponentsScrollPos, scrollRect);
+
+
+            float totalHeight = CalculateHiltPartsTotalHeight(availableCategories);
+            Widgets.BeginScrollView(contentRect, ref hiltComponentsScrollPos, new Rect(0, 0, rect.width - 16f, totalHeight));
             try
             {
                 float yPos = 0;
-                foreach (HiltPartCategory category in Enum.GetValues(typeof(HiltPartCategory)))
+                foreach (HiltPartCategoryDef category in availableCategories)
                 {
-                    float categoryHeight = EstimateCategoryHeight(category);
-
-                    // Always draw if visible, with extra buffer
-                    if (yPos + categoryHeight >= hiltComponentsScrollPos.y - 50f &&
-                        yPos <= hiltComponentsScrollPos.y + viewRect.height + 50f)
-                    {
-                        yPos = DrawHiltPartCategory(scrollRect.width, yPos, category);
-                    }
-                    else
-                    {
-                        yPos += categoryHeight;
-                    }
-
-                    // Extra space between categories
-                    yPos += 5f;
+                    yPos = DrawHiltCategoryCard(rect.width - 16f, yPos, category);
+                    yPos += categorySpacing;
                 }
             }
             finally
             {
                 Widgets.EndScrollView();
             }
+
+            foreach (var cat in availableCategories)
+            {
+                Log.Message($"Found category: {cat.defName}");
+            }
         }
 
-        private float EstimateCategoryHeight(HiltPartCategory category)
+        private float DrawHiltCategoryCard(float width, float yPos, HiltPartCategoryDef category)
         {
-            // Conservative height estimates
-            float height = 40f; // Header + padding
+            // Spacing constants
+            const float cardPadding = 10f;
+            const float lineHeight = 22f;
+            const float buttonHeight = 30f;
+            const float statIndent = 15f;
+            const float elementSpacing = 6f;
+            if (category == null) return yPos;
+
+            HiltPartDef currentPart = lightsaberBlade.HiltManager.GetHiltPartByCategory(category);
+            float cardHeight = EstimateCategoryHeight(category);
+            Rect cardRect = new Rect(0, yPos, width, cardHeight);
+            Widgets.DrawBoxSolid(cardRect, new Color(0.1f, 0.1f, 0.1f, 0.5f));
+            Widgets.DrawBox(cardRect);
+
+
+            Rect headerRect = new Rect(
+                cardPadding,
+                yPos + cardPadding,
+                width - cardPadding * 2 - 120f - cardPadding,
+                lineHeight
+            );
+
+            Text.Font = GameFont.Small;
+            Text.Anchor = TextAnchor.MiddleLeft;
+            Widgets.Label(headerRect, category.label.SplitCamelCase());
+            Text.Anchor = TextAnchor.UpperLeft;
+
+            // Browse button (aligned with header)
+            Rect browseButtonRect = new Rect(
+                width - 120f - cardPadding,
+                yPos + cardPadding,
+                120f,
+                buttonHeight
+            );
+
+            if (Widgets.ButtonText(browseButtonRect, "Browse Options"))
+            {
+                Find.WindowStack.Add(new HiltPartSelectionWindow(category, pawn, lightsaberBlade));
+            }
+
+            // Current part info
+            float contentY = headerRect.yMax + elementSpacing;
+            Rect currentLabelRect = new Rect(
+                cardPadding,
+                contentY,
+                width - cardPadding * 2,
+                lineHeight
+            );
+
+            Widgets.Label(currentLabelRect, currentPart != null ? $"Current: {currentPart.label}" : "Current: None");
+            contentY += lineHeight;
+
+            // Current part stats
+            if (currentPart?.equippedStatOffsets != null)
+            {
+                foreach (var statMod in currentPart.equippedStatOffsets)
+                {
+                    Rect statRect = new Rect(
+                        cardPadding + statIndent,
+                        contentY,
+                        width - cardPadding * 2 - statIndent,
+                        lineHeight
+                    );
+
+                    Widgets.Label(statRect, $"{statMod.stat.label}: {statMod.value.ToStringWithSign("0.##")}");
+                    contentY += lineHeight;
+                }
+            }
+
+            // Update final card height based on actual content
+            cardRect.height = contentY - yPos + cardPadding; // Add bottom padding
+
+            return cardRect.yMax;
+        }
+
+        private float EstimateCategoryHeight(HiltPartCategoryDef category)
+        {
+            const float baseHeight = 70f; // Header + button + current label
+            const float statHeight = 22f;
+            const float bottomPadding = 10f;
 
             HiltPartDef part = lightsaberBlade.HiltManager.GetHiltPartByCategory(category);
-            if (part != null)
+            float height = baseHeight;
+
+            if (part?.equippedStatOffsets != null)
             {
-                height += 30f; // Part name
-                if (part.equippedStatOffsets != null)
-                {
-                    height += part.equippedStatOffsets.Count * 25f; // Stats
-                }
-            }
-            else
-            {
-                height += 25f; // "None installed"
+                height += part.equippedStatOffsets.Count * statHeight;
             }
 
-            height += 40f; // Button + spacing
-            height += 20f; // Divider
-
-            return height;
+            return height + bottomPadding;
         }
 
-        private float DrawHiltPartCategory(float width, float yPos, HiltPartCategory category)
+        private float CalculateHiltPartsTotalHeight(List<HiltPartCategoryDef> categories)
         {
-            const float padding = 15f;
-            const float lineHeight = 25f;
-
-            // Category header
-            Rect headerRect = new Rect(0, yPos, width, lineHeight + 10f);
-            Widgets.DrawBoxSolid(headerRect, new Color(0.15f, 0.15f, 0.15f, 0.85f));
-            Text.Anchor = TextAnchor.MiddleLeft;
-            Widgets.Label(headerRect.ContractedBy(5f), category.ToString().SplitCamelCase());
-            Text.Anchor = TextAnchor.UpperLeft;
-            yPos += headerRect.height;
-
-            // Part info
-            HiltPartDef currentPart = lightsaberBlade.HiltManager.GetHiltPartByCategory(category);
-            Rect partRect = new Rect(padding, yPos, width - padding * 2, lineHeight);
-
-            if (currentPart != null)
-            {
-                Widgets.Label(partRect, currentPart.label);
-                yPos += lineHeight;
-
-                // Stats
-                if (currentPart.equippedStatOffsets != null)
-                {
-                    foreach (var statMod in currentPart.equippedStatOffsets)
-                    {
-                        Rect statRect = new Rect(padding + 10f, yPos, width - padding * 2 - 10f, lineHeight);
-                        Widgets.Label(statRect, $"{statMod.stat.label}: {statMod.value.ToStringWithSign("0.##")}");
-                        yPos += lineHeight;
-                    }
-                }
-            }
-            else
-            {
-                Widgets.Label(partRect, "None installed");
-                yPos += lineHeight;
-            }
-
-            // Button
-            Rect buttonRect = new Rect(width - padding - 120f, yPos, 120f, 30f);
-            if (Widgets.ButtonText(buttonRect, currentPart == null ? "Install" : "Upgrade"))
-            {
-                ShowHiltPartInstallMenu(category);
-            }
-            yPos += buttonRect.height + 10f;
-
-            // Divider
-            Widgets.DrawLineHorizontal(padding, yPos, width - padding * 2);
-            yPos += 15f;
-
-            return yPos;
-        }
-    
-        private float CalculateHiltPartsTotalHeight()
-        {
+            const float categorySpacing = 8f;
             float height = 0f;
-            foreach (HiltPartCategory category in Enum.GetValues(typeof(HiltPartCategory)))
+
+            foreach (HiltPartCategoryDef category in categories)
             {
-                height += EstimateCategoryHeight(category);
-                height += 5f; // Extra space between categories
+                height += EstimateCategoryHeight(category) + categorySpacing;
             }
-            return height + 30f; // Additional bottom buffer
+
+            return height + 10f; // Extra bottom buffer
         }
 
 
@@ -921,17 +952,18 @@ namespace Lightsaber
                 // Create the option with the tooltip
                 options.Add(new FloatMenuOption(
                     label: localHiltGraphic.label,
-                    action: () => {
+                    action: () =>
+                    {
                         lightsaberBlade.HiltManager.SelectedHilt = localHiltGraphic;
                         lightsaberBlade.HiltManager.UpdateHiltGraphic();
                         lightsaberBlade.parent.Notify_ColorChanged();
                     },
-                    extraPartWidth: 24f, // Space for an icon if you want to add one
-                    extraPartOnGUI: (Rect rect) => {
-                        // You could draw an icon here if you want
+                    extraPartWidth: 24f,
+                    extraPartOnGUI: (Rect rect) =>
+                    {
                         return false;
                     }
-                    
+
                 ));
             }
 
@@ -959,59 +991,6 @@ namespace Lightsaber
             lightsaberBlade.HiltManager.SelectedHilt = lightsaberBlade.Props.availableHiltGraphics[newIndex];
             lightsaberBlade.HiltManager.UpdateHiltGraphic();
             lightsaberBlade.parent.Notify_ColorChanged();
-        }
-
-        private void ShowHiltPartInstallMenu(HiltPartCategory category)
-        {
-            List<HiltPartDef> allHiltParts = DefDatabase<HiltPartDef>.AllDefsListForReading
-                .Where(p => p.category == category)
-                .ToList();
-
-            if (!allHiltParts.Any())
-            {
-                Messages.Message($"No hilt parts found for category: {category}", MessageTypeDefOf.RejectInput, false);
-                return;
-            }
-
-            List<FloatMenuOption> options = new List<FloatMenuOption>();
-            foreach (HiltPartDef part in allHiltParts)
-            {
-                HiltPartDef localPart = part;
-                options.Add(new FloatMenuOption($"{localPart.label} (Requires: {localPart.requiredComponent.label})", () =>
-                {
-                    Thing requiredComponent = GenClosest.ClosestThingReachable(
-                        pawn.Position,
-                        pawn.Map,
-                        ThingRequest.ForDef(localPart.requiredComponent),
-                        PathEndMode.Touch,
-                        TraverseParms.For(pawn),
-                        999f
-                    );
-
-                    if (requiredComponent == null)
-                    {
-                        Messages.Message($"No {localPart.requiredComponent.label} found for the upgrade!", MessageTypeDefOf.RejectInput, false);
-                        return;
-                    }
-
-                    HiltPartDef previousPart = lightsaberBlade.HiltManager.GetHiltPartByCategory(localPart.category);
-                    var job = new Job_UpgradeLightsaber
-                    {
-                        def = LightsaberDefOf.Force_UpgradeLightsaber,
-                        selectedhiltPartDef = localPart,
-                        previoushiltPartDef = previousPart,
-                        targetA = requiredComponent
-                    };
-
-                    pawn.jobs.StartJob(job, JobCondition.InterruptForced, null, true);
-                    if (!pawn.jobs.TryTakeOrderedJob(job))
-                    {
-                        Log.Warning("Failed to take job for upgrading lightsaber.");
-                    }
-                }));
-            }
-
-            Find.WindowStack.Add(new FloatMenu(options));
         }
 
         private void ShowColorPicker(bool isPrimaryColor)
@@ -1117,6 +1096,226 @@ namespace Lightsaber
             }
 
             return result.ToString();
+        }
+    }
+
+    public class HiltPartSelectionWindow : Window
+    {
+        private readonly HiltPartCategoryDef category;
+        private readonly Pawn pawn;
+        private readonly Comp_LightsaberBlade lightsaberBlade;
+        private Vector2 scrollPosition;
+        private HiltPartDef selectedPart;
+
+        public override Vector2 InitialSize => new Vector2(600f, 700f);
+
+        public HiltPartSelectionWindow(HiltPartCategoryDef category, Pawn pawn, Comp_LightsaberBlade lightsaberBlade)
+        {
+            this.category = category;
+            this.pawn = pawn;
+            this.lightsaberBlade = lightsaberBlade;
+            this.doCloseButton = true;
+            this.absorbInputAroundWindow = true;
+            this.closeOnClickedOutside = true;
+        }
+
+        public override void DoWindowContents(Rect inRect)
+        {
+            // Window title
+            Text.Font = GameFont.Medium;
+            Rect titleRect = new Rect(0, 0, inRect.width, 35f);
+            Widgets.Label(titleRect, $"{category.label.SplitCamelCase()} Options"); // Updated to use string category
+            Text.Font = GameFont.Small;
+
+            // Install button positioned above close button
+            float installButtonHeight = 35f;
+            float closeButtonHeight = CloseButSize.y;
+            Rect installButtonRect = new Rect(
+                inRect.width / 2 - 100f,
+                inRect.height - installButtonHeight - closeButtonHeight - 15f, // 15f spacing
+                200f,
+                installButtonHeight
+            );
+
+            // Main content area
+            Rect contentRect = new Rect(
+                0,
+                titleRect.yMax + 10f,
+                inRect.width,
+                installButtonRect.y - titleRect.yMax - 15f
+            );
+
+            // Get all parts for this category
+            List<HiltPartDef> availableParts = DefDatabase<HiltPartDef>.AllDefsListForReading
+                .Where(p => p.category == category)
+                .OrderBy(p => p.label)
+                .ToList();
+
+            // Calculate total content height
+            float totalHeight = availableParts.Sum(p => CalculatePartHeight(p) + 8f) + 10f;
+
+            // Scroll view
+            Widgets.BeginScrollView(contentRect, ref scrollPosition, new Rect(0, 0, contentRect.width - 16f, totalHeight));
+            try
+            {
+                float yPos = 0;
+                foreach (HiltPartDef part in availableParts)
+                {
+                    // Draw white outline background
+                    Rect outlineRect = new Rect(0, yPos, contentRect.width - 16f, CalculatePartHeight(part));
+                    Widgets.DrawBoxSolid(outlineRect, Color.white);
+
+                    // Draw actual part card
+                    float cardHeight = DrawPartCard(contentRect.width - 16f, yPos, part);
+                    yPos += cardHeight + 8f;
+                }
+            }
+            finally
+            {
+                Widgets.EndScrollView();
+            }
+
+            // Install button
+            if (Widgets.ButtonText(installButtonRect, "Install Selected") && selectedPart != null)
+            {
+                TryInstallPart(selectedPart);
+                Close();
+            }
+
+            // Disable button if nothing selected
+            if (selectedPart == null)
+            {
+                GUI.color = Color.gray;
+                Widgets.DrawBoxSolid(installButtonRect, new Color(0.3f, 0.3f, 0.3f, 0.8f));
+                GUI.color = Color.white;
+            }
+        }
+
+        private float DrawPartCard(float width, float yPos, HiltPartDef part)
+        {
+            const float padding = 8f;
+            const float lineHeight = 20f;
+            const float indent = 15f;
+            const float elementSpacing = 6f;
+
+            float cardHeight = CalculatePartHeight(part);
+
+            // Main card background (drawn inside white outline)
+            Rect cardRect = new Rect(1, yPos + 1, width - 2, cardHeight - 2); // Shrink to fit inside outline
+            bool isSelected = selectedPart == part;
+            bool isCurrent = lightsaberBlade.HiltManager.GetHiltPartByCategory(category) == part;
+
+            Widgets.DrawBoxSolid(cardRect,
+                isSelected ? new Color(0.15f, 0.25f, 0.35f, 0.7f) :  // Darker blue with more opacity
+                   isCurrent ? new Color(0.1f, 0.3f, 0.1f, 0.7f) :      // Darker green with more opacity
+                   new Color(0.1f, 0.1f, 0.1f, 1f));
+
+            // Part name
+            Rect nameRect = new Rect(padding + 1, yPos + 1 + padding, width - padding * 2, lineHeight);
+            Text.Font = GameFont.Small;
+            Widgets.Label(nameRect, part.label.CapitalizeFirst());
+
+            // Requirements
+            float reqWidth = Text.CalcSize(part.requiredComponent?.label ?? "No requirements").x + 50f;
+            Rect reqRect = new Rect(width - reqWidth - padding - 1, yPos + 1 + padding, reqWidth, lineHeight);
+            Text.Font = GameFont.Tiny;
+            string reqText = part.requiredComponent != null ?
+                $"Req: {part.requiredComponent.label}" :
+                "No requirements";
+            Widgets.Label(reqRect, reqText);
+            Text.Font = GameFont.Small;
+
+            // Stats
+            float statY = nameRect.yMax + elementSpacing;
+            if (part.equippedStatOffsets != null && part.equippedStatOffsets.Count > 0)
+            {
+                Text.Font = GameFont.Tiny;
+                foreach (var statMod in part.equippedStatOffsets)
+                {
+                    Rect statRect = new Rect(padding + indent + 1, statY, width - padding * 2 - indent, lineHeight);
+                    Widgets.Label(statRect, $"• {statMod.stat.label}: {statMod.value.ToStringWithSign("0.#")}");
+                    statY += lineHeight + elementSpacing * 0.5f;
+                }
+                Text.Font = GameFont.Small;
+                statY += elementSpacing;
+            }
+
+            // Description
+            if (!part.description.NullOrEmpty())
+            {
+                Text.Font = GameFont.Tiny;
+                Rect descRect = new Rect(
+                    padding + 1,
+                    statY + elementSpacing,
+                    width - padding * 2,
+                    Text.CalcHeight(part.description, width - padding * 2)
+                );
+                Widgets.Label(descRect, part.description.Colorize(new Color(0.8f, 0.8f, 0.8f)));
+                statY += descRect.height + elementSpacing;
+                Text.Font = GameFont.Small;
+            }
+
+            // Click target
+            if (Widgets.ButtonInvisible(new Rect(0, yPos, width, statY - yPos + padding)))
+            {
+                selectedPart = part;
+                SoundDefOf.Click.PlayOneShotOnCamera();
+            }
+
+            return cardHeight;
+        }
+
+        private float CalculatePartHeight(HiltPartDef part)
+        {
+            const float baseHeight = 44f;
+            const float statHeight = 20f;
+            const float descLineHeight = 16f;
+            const float minHeight = 54f;
+
+            float height = baseHeight;
+
+            if (part.equippedStatOffsets != null)
+            {
+                height += part.equippedStatOffsets.Count * (statHeight + 3f);
+            }
+
+            if (!part.description.NullOrEmpty())
+            {
+                float descWidth = InitialSize.x - 40f;
+                int descLines = Mathf.CeilToInt(Text.CalcHeight(part.description, descWidth) / descLineHeight);
+                height += descLines * descLineHeight + 10f;
+            }
+
+            return Mathf.Max(height, minHeight);
+        }
+
+        private void TryInstallPart(HiltPartDef part)
+        {
+            Thing requiredComponent = GenClosest.ClosestThingReachable(
+                pawn.Position,
+                pawn.Map,
+                ThingRequest.ForDef(part.requiredComponent),
+                PathEndMode.Touch,
+                TraverseParms.For(pawn),
+                999f
+            );
+
+            if (requiredComponent == null)
+            {
+                Messages.Message($"No {part.requiredComponent.label} found for installation!", MessageTypeDefOf.RejectInput, false);
+                return;
+            }
+
+            HiltPartDef previousPart = lightsaberBlade.HiltManager.GetHiltPartByCategory(part.category);
+            var job = new Job_UpgradeLightsaber
+            {
+                def = LightsaberDefOf.Force_UpgradeLightsaber,
+                selectedhiltPartDef = part,
+                previoushiltPartDef = previousPart,
+                targetA = requiredComponent
+            };
+
+            pawn.jobs.StartJob(job, JobCondition.InterruptForced, null, true);
         }
     }
 }

@@ -32,8 +32,8 @@ namespace Lightsaber
                 return false;
             }
 
-            selectedHiltPart = ((Job_UpgradeLightsaber)job).selectedhiltPartDef; // Retrieve selected part
-            previousHiltPart = ((Job_UpgradeLightsaber)job).previoushiltPartDef; // Retrieve previous part
+            selectedHiltPart = ((Job_UpgradeLightsaber)job).selectedhiltPartDef;
+            previousHiltPart = ((Job_UpgradeLightsaber)job).previoushiltPartDef;
 
             if (selectedHiltPart == null)
             {
@@ -41,13 +41,12 @@ namespace Lightsaber
                 return false;
             }
 
-            if (!pawn.Reserve(requiredComponent, job, 1, -1, null, errorOnFailed))
+            if (!pawn.CanReserveAndReach(requiredComponent, PathEndMode.ClosestTouch, Danger.None, 10 , -1, null, errorOnFailed))
             {
                 Log.Warning($"Failed to reserve required component {requiredComponent.Label} for job {job.def}");
                 return false;
             }
 
-            // Check if the pawn is holding a lightsaber
             Comp_LightsaberBlade lightsaberComp = pawn.equipment?.Primary?.GetComp<Comp_LightsaberBlade>();
             if (lightsaberComp == null)
             {
@@ -70,7 +69,6 @@ namespace Lightsaber
                 yield break;
             }
 
-            // Ensure the pawn has a lightsaber equipped
             Comp_LightsaberBlade lightsaberComp = pawn.equipment?.Primary?.GetComp<Comp_LightsaberBlade>();
             if (lightsaberComp == null)
             {
@@ -93,7 +91,6 @@ namespace Lightsaber
                     return;
                 }
 
-                // Consume one item from the stack
                 if (requiredComponent.stackCount > 1)
                 {
                     requiredComponent.SplitOff(1).Destroy(DestroyMode.Vanish);
@@ -111,7 +108,7 @@ namespace Lightsaber
                 {
                     lightsaberComp.HiltManager.RemoveHiltPart(previousHiltPart);
 
-                    // Drop the previous component
+ 
                     Thing droppedComponent = ThingMaker.MakeThing(previousHiltPart.droppedComponent);
                     if (droppedComponent != null)
                     {

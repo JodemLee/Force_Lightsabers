@@ -21,9 +21,37 @@ namespace Lightsaber
         public Color bladeColor2 = Color.white;
         public Color coreColor2 = Color.white;
 
+
+        // Cache the loaded texture
+        private Texture2D _cachedBladeTexture;
+
+
         // Blade Lengths
         public float bladeLength = 1;
         public float bladeLength2 = 1;
+
+        public float BladeLength
+        {
+            get => bladeLength;
+            set
+            {
+                bladeLength = value;
+                targetScaleForCore1AndBlade1 = new Vector3(bladeLength, 1f, bladeLength);
+                SetShaderProperties();
+            }
+        }
+
+        public float BladeLength2
+        {
+            get => bladeLength2;
+            set
+            {
+                bladeLength2 = value;
+                targetScaleForCore2AndBlade2 = new Vector3(bladeLength2, 1f, bladeLength2);
+                SetShaderProperties();
+            }
+        }
+
         public float minBladeLength;
         public float maxBladeLength;
 
@@ -57,7 +85,7 @@ namespace Lightsaber
 
         // Utility
         private const int TicksPerGlowerUpdate = 60;
-        private float scaleTimer;
+        public float scaleTimer;
         public MaterialPropertyBlock propertyBlock;
         public bool isFlipped = false;
 
@@ -88,6 +116,7 @@ namespace Lightsaber
         public CompProperties_LightsaberBlade Props => (CompProperties_LightsaberBlade)props;
 
         public HiltManager HiltManager => _hiltManager;
+        public List<HiltPartCategoryDef> AllowedCategories => Props?.allowedCategories ?? new List<HiltPartCategoryDef>();
 
 
 
@@ -98,15 +127,14 @@ namespace Lightsaber
         public override void Initialize(CompProperties props)
         {
             base.Initialize(props);
-
-            // Initialize blade lengths
-            bladeLength = Rand.Range(Props.minBladeLength1, Props.maxBladeLength1);
-            bladeLength2 = Rand.Range(Props.minBladeLength2, Props.maxBladeLength2);
             propertyBlock = new MaterialPropertyBlock();
 
+            _hiltManager = new HiltManager();
             if (props is CompProperties_LightsaberBlade lightsaberProps)
             {
                 _hiltManager.AvailableHilts = lightsaberProps.availableHiltGraphics;
+                minBladeLength = lightsaberProps.minBladeLength1;
+                maxBladeLength = lightsaberProps.maxBladeLength1;
             }
 
             if (lightsaberSound != null && lightsaberSound.Count > 0)
@@ -130,7 +158,7 @@ namespace Lightsaber
         }
 
         public Graphic BladeGraphic => GetOrCreateGraphic(ref bladeGraphic, Props?.bladeGraphicData, bladeColor, Props?.bladeGraphicData?.Graphic?.Shader ?? null);
-        
+
 
         public Graphic GetOrCreateGraphic(ref Graphic graphicField, GraphicData graphicData, Color color, Shader shaderOverride)
         {
@@ -211,8 +239,8 @@ namespace Lightsaber
                     validPreferredParts = allHiltParts;
                 }
 
-                HiltManager.SelectedHiltParts = Enum.GetValues(typeof(HiltPartCategory))
-                    .Cast<HiltPartCategory>()
+                // Filter by allowed categories
+                HiltManager.SelectedHiltParts = AllowedCategories
                     .Select(category =>
                     {
                         var preferredForCategory = validPreferredParts
@@ -235,11 +263,9 @@ namespace Lightsaber
                     .ToList();
             }
 
-            // Get crystal color after parts are set
-            HiltPartDef crystalPart = HiltManager.GetHiltPartByCategory(HiltPartCategory.Crystal);
+            HiltPartDef crystalPart = HiltManager.SelectedHiltParts.FirstOrDefault(p => p.colorGenerator != null);
             Color? crystalColor = crystalPart?.colorGenerator?.NewRandomizedColor();
 
-            // Set blade color with priority: ModExtension > Crystal Part > Random
             if (modExt?.bladeColors != null && modExt.bladeColors.Any())
             {
                 bladeColor = modExt.bladeColors.RandomElement();
@@ -253,25 +279,60 @@ namespace Lightsaber
                 bladeColor = GetRandomRGBColor();
             }
 
-            // Set core color with priority: ModExtension > White/Black
+            HiltPartDef crystalPart2 = HiltManager.SelectedHiltParts.FirstOrDefault(p => p.colorGenerator2 != null);
+            Color? crystalColor2 = crystalPart?.colorGenerator2?.NewRandomizedColor();
+
             if (modExt?.coreColors != null && modExt.coreColors.Any())
             {
                 coreColor = modExt.coreColors.RandomElement();
+            }
+            else if (crystalColor2.HasValue)
+            {
+                coreColor2 = crystalColor2.Value;
             }
             else
             {
                 coreColor = GetBlackOrWhiteCore();
             }
 
-            // Set secondary colors to match primary
-            bladeColor2 = bladeColor;
-            coreColor2 = coreColor;
-
-            // Set hilt colors
             if (modExt != null)
             {
-                HiltManager.HiltColorOne = StuffColorUtility.GetRandomColorFromStuffCategories(modExt.validStuffCategoriesHiltColorOne);
-                HiltManager.HiltColorTwo = StuffColorUtility.GetRandomColorFromStuffCategories(modExt.validStuffCategoriesHiltColorTwo);
+                if (modExt.defaultBladeLength1 != null)
+                {
+                    BladeLength = Mathf.Clamp(modExt.defaultBladeLength1, minBladeLength, maxBladeLength);
+                }
+                if (modExt.defaultBladeLength2 != null)
+                {
+                    BladeLength2 = Mathf.Clamp(modExt.defaultBladeLength2, minBladeLength, maxBladeLength);
+                }
+            }
+            else
+            {
+                BladeLength = Mathf.Lerp(minBladeLength, maxBladeLength, 0.5f);
+                BladeLength2 = Mathf.Lerp(minBladeLength, maxBladeLength, 0.5f);
+            }
+
+
+            bladeColor2 = bladeColor;
+            coreColor2 = coreColor;
+            if (modExt != null)
+            {
+                if (modExt.hiltColorOne != null)
+                {
+                    HiltManager.HiltColorOne = (Color)modExt.hiltColorOne;
+                }
+                else if (modExt.validStuffCategoriesHiltColorOne != null)
+                {
+                    HiltManager.HiltColorOne = StuffColorUtility.GetRandomColorFromStuffCategories(modExt.validStuffCategoriesHiltColorOne);
+                }
+                if (modExt.hiltColorTwo != null)
+                {
+                    HiltManager.HiltColorTwo = (Color)modExt.hiltColorTwo;
+                }
+                else if (modExt.validStuffCategoriesHiltColorTwo != null)
+                {
+                    HiltManager.HiltColorTwo = StuffColorUtility.GetRandomColorFromStuffCategories(modExt.validStuffCategoriesHiltColorTwo);
+                }
             }
             else
             {
@@ -291,8 +352,6 @@ namespace Lightsaber
                     HiltManager.SelectedHilt = matchingHilts.RandomElement();
                 }
             }
-
-            // Fallback hilt selection
             if (HiltManager.SelectedHilt == null && Props.availableHiltGraphics != null && Props.availableHiltGraphics.Any())
             {
                 HiltManager.SelectedHilt = Props.availableHiltGraphics.RandomElement();
@@ -317,7 +376,7 @@ namespace Lightsaber
             }
         }
 
-        
+
 
         #endregion
 
@@ -369,6 +428,9 @@ namespace Lightsaber
             // Save and restore current draw offset
             Scribe_Values.Look(ref currentDrawOffset, "currentDrawOffset", Vector3.zero);
             Scribe_Values.Look(ref targetDrawOffset, "targetDrawOffset", Vector3.zero);
+
+            Scribe_Values.Look(ref stanceRotation, "stanceRotation", 0f);
+            Scribe_Values.Look(ref drawOffset, "drawOffset", Vector3.zero);
         }
 
         #endregion
@@ -414,8 +476,8 @@ namespace Lightsaber
         {
             base.Notify_Equipped(pawn);
 
-            targetScaleForCore1AndBlade1 = new Vector3(bladeLength, 1f, bladeLength);
-            targetScaleForCore2AndBlade2 = new Vector3(bladeLength2, 1f, bladeLength2);
+            targetScaleForCore1AndBlade1 = new Vector3(BladeLength, 1f, BladeLength);
+            targetScaleForCore2AndBlade2 = new Vector3(BladeLength2, 1f, BladeLength2);
             ResetToZero();
 
             if (lightsaberSound != null && lightsaberSound.Count > 0 && selectedSoundEffect != null)
@@ -427,6 +489,14 @@ namespace Lightsaber
             {
                 InitializeColors();
             }
+        }
+
+        public void ForceUpdateScaling()
+        {
+            currentScaleForCore1AndBlade1 = targetScaleForCore1AndBlade1;
+            currentScaleForCore2AndBlade2 = targetScaleForCore2AndBlade2;
+            scaleTimer = 1f; // Mark interpolation as "complete"
+            SetShaderProperties(); // Update shader
         }
 
         public void ResetToZero()
@@ -489,6 +559,7 @@ namespace Lightsaber
         }
 
         #endregion
+
     }
 
 
@@ -502,7 +573,7 @@ namespace Lightsaber
         public FleckDef Fleck;
         public List<SoundDef> lightsaberSound;
         public List<HiltDef> availableHiltGraphics;
-
+        public List<HiltPartCategoryDef> allowedCategories;
         public CompProperties_LightsaberBlade()
         {
             this.compClass = typeof(Comp_LightsaberBlade);

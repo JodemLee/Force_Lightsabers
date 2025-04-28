@@ -35,8 +35,8 @@ namespace Lightsaber
 
             try
             {
-                ApplyStanceRotation(pawn);
                 AssignHediffs(pawn, pawn.HasPsylink); // More accurate psylink check
+                ApplyStanceRotation(pawn);
             }
             catch (Exception ex)
             {
@@ -78,7 +78,7 @@ namespace Lightsaber
                 var hediff = HediffMaker.MakeHediff(hediffDef, pawn);
                 hediff.Severity = lastSeverities.TryGetValue(hediffDef, out var severity)
                     ? severity
-                    : Rand.Range(1f, 7f);
+                    : Rand.Range(Props.minSeverity, Props.maxSeverity);
 
                 pawn.health.AddHediff(hediff);
             }
@@ -140,6 +140,9 @@ namespace Lightsaber
         public List<AbilityDef> abilitiesNotRequiringPsylink;
         public List<HediffDef> hediffsRequiringPsylink;
         public List<HediffDef> hediffsNotRequiringPsylink;
+
+        public int minSeverity = 1;
+        public int maxSeverity = 7;
 
         public CompProperties_LightsaberStance()
         {

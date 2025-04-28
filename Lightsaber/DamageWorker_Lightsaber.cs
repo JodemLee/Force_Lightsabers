@@ -1,8 +1,10 @@
 ﻿using RimWorld;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using Verse;
+using Verse.AI.Group;
 
 namespace Lightsaber
 {
@@ -10,13 +12,41 @@ namespace Lightsaber
     {
         public override DamageResult Apply(DamageInfo dinfo, Thing victim)
         {
+            // Check if this is a duel situation
+            if (victim is Pawn pawn && IsInDuel(pawn, dinfo.Instigator as Pawn))
+            {
+                // Create a copy of the damage info but change it to blunt damage
+                DamageInfo bluntDinfo = new DamageInfo(
+                    def: LightsaberDefOf.Force_BluntLightsaber,
+                    amount: 1f,
+                    armorPenetration: dinfo.ArmorPenetrationInt * 0.8f,
+                    angle: dinfo.Angle,
+                    instigator: dinfo.Instigator,
+                    hitPart: dinfo.HitPart,
+                    weapon: dinfo.Weapon,
+                    category: dinfo.Category,
+                    intendedTarget: null,
+                    false
 
-            if (!(victim is Pawn pawn))
+                );
+                return base.Apply(bluntDinfo, victim);
+            }
+
+            // Normal behavior for non-duel situations
+            if (!(victim is Pawn))
             {
                 return base.Apply(dinfo, victim);
             }
-            return ApplyToPawn(dinfo, pawn);
+            return ApplyToPawn(dinfo, victim as Pawn);
         }
+
+        private bool IsInDuel(Pawn victim, Pawn instigator)
+        {
+            // Check if either pawn is in a duel
+            return (victim.GetLord()?.LordJob is LordJob_Ritual_LightsaberDuel) ||
+                   (instigator?.GetLord()?.LordJob is LordJob_Ritual_LightsaberDuel);
+        }
+
 
         private DamageResult ApplyToPawn(DamageInfo dinfo, Pawn pawn)
         {
@@ -45,8 +75,6 @@ namespace Lightsaber
             var lightsaberBlade = pawn.equipment?.Primary?.TryGetComp<Comp_LightsaberBlade>();
             if (dinfo.Instigator is Pawn attacker)
             {
-
-
                 if (lightsaberBlade != null && LightsaberCombatUtility.CanParry(pawn, attacker)) // Check if target can parry
                 {
                     LightsaberCombatUtility.TriggerWeaponRotationOnParry(pawn, attacker);
@@ -210,7 +238,51 @@ namespace Lightsaber
 
         protected override void ApplySpecialEffectsToPart(Pawn pawn, float totalDamage, DamageInfo dinfo, DamageResult result)
         {
+            // Get the lightsaber blade component from the attacker's weapon
+            var lightsaberBladeAttacker = dinfo.Instigator is Pawn attacker ?
+                attacker.equipment?.Primary?.TryGetComp<Comp_LightsaberBlade>() : null;
 
+            // Check if we have a lightsaber with hilt parts that specify damage types
+            if (lightsaberBladeAttacker != null && lightsaberBladeAttacker.HiltManager?.SelectedHiltParts != null)
+            {
+                // Collect all damageDefs from all hilt parts
+                var combinedDamageDefs = new List<DamageDef>();
+                foreach (var hiltPart in lightsaberBladeAttacker.HiltManager.SelectedHiltParts)
+                {
+                    if (hiltPart.damageDefs != null && hiltPart.damageDefs.Count > 0)
+                    {
+                        combinedDamageDefs.AddRange(hiltPart.damageDefs);
+                    }
+                }
+
+                // If we have any custom damage defs, use them instead of the default one
+                if (combinedDamageDefs.Count > 0)
+                {
+                    // Randomly select one of the damage defs or use some logic to choose
+                    DamageDef selectedDamageDef = combinedDamageDefs.RandomElement();
+
+                    // Create new damage info with the selected damage type
+                    DamageInfo newDinfo = new DamageInfo(
+                        def: selectedDamageDef,
+                        amount: totalDamage,
+                        armorPenetration: dinfo.ArmorPenetrationInt,
+                        angle: dinfo.Angle,
+                        instigator: dinfo.Instigator,
+                        hitPart: dinfo.HitPart,
+                        weapon: dinfo.Weapon,
+                        category: dinfo.Category,
+                        intendedTarget: dinfo.IntendedTarget,
+                        instigatorGuilty: dinfo.InstigatorGuilty
+                    );
+
+                    // Apply the modified damage
+                    FinalizeAndAddInjury(pawn, totalDamage, newDinfo, result);
+                    CheckDuplicateDamageToOuterParts(newDinfo, pawn, totalDamage, result);
+                    return;
+                }
+            }
+
+            // Default behavior if no custom damage types are specified
             totalDamage = ReduceDamageToPreserveOutsideParts(totalDamage, dinfo, pawn);
             FinalizeAndAddInjury(pawn, totalDamage, dinfo, result);
             CheckDuplicateDamageToOuterParts(dinfo, pawn, totalDamage, result);

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using Verse;
+using Verse.AI;
 
 namespace Lightsaber
 {
@@ -47,40 +48,52 @@ namespace Lightsaber
 
                         if (targetStanceData != null)
                         {
-                            // Base parry chance from skill difference
                             float adjustedTargetMeleeSkill = GetAdjustedMeleeSkill(targetPawn);
                             float adjustedAttackerMeleeSkill = GetAdjustedMeleeSkill(attacker);
                             int skillDifference = (int)(adjustedTargetMeleeSkill - adjustedAttackerMeleeSkill);
                             float baseParryChance = Mathf.Clamp(0.05f * skillDifference, 0.05f, 0.95f);
-
-                            // Apply stance's inherent parry chance modifier
                             float stanceParryModifier = targetStanceData.ParryChance;
                             float finalParryChance = baseParryChance * stanceParryModifier;
 
-                            // Apply matchup bonuses if attacker also has a stance
                             if (attackerStance != null)
                             {
                                 StanceData attackerStanceData = stanceDef.GetStanceDataForSeverity(attackerStance.Severity);
 
                                 if (attackerStanceData != null)
                                 {
-                                    // Check for strong/weak matchups
                                     if (stanceDef.IsStrongAgainst(targetStanceData.StanceID, attackerStanceData.StanceID))
                                     {
-                                        finalParryChance *= 1.3f; // 30% bonus for favorable matchup
+                                        finalParryChance *= 1.3f;
                                     }
                                     else if (stanceDef.IsWeakAgainst(targetStanceData.StanceID, attackerStanceData.StanceID))
                                     {
-                                        finalParryChance *= 0.7f; // 30% penalty for bad matchup
+                                        finalParryChance *= 0.7f;
                                     }
                                 }
                             }
 
-                            // Final clamp to ensure reasonable values
                             finalParryChance = Mathf.Clamp(finalParryChance, 0.05f, 0.95f);
 
                             if (Rand.Value <= finalParryChance)
                             {
+                                
+                                
+                                //    if (Rand.Value < 1f)
+                                //{
+                                //    // Create saber lock job for both pawns
+                                //    targetPawn.jobs.StartJob(
+                                //        JobMaker.MakeJob(DefDatabase<JobDef>.GetNamed("Force_SaberLock"), attacker),
+                                //        JobCondition.InterruptForced
+                                //    );
+                                //    attacker.jobs.StartJob(
+                                //        JobMaker.MakeJob(DefDatabase<JobDef>.GetNamed("Force_SaberLock"), targetPawn),
+                                //        JobCondition.InterruptForced
+                                //    );
+
+                                //    MoteMaker.ThrowText(targetPawn.DrawPos, targetPawn.Map, "Saber Lock!", Color.red);
+                                //    return true;
+                                //}
+
                                 string stanceName = targetStanceData.ShortLabel ?? targetStanceData.StanceID;
                                 string parryMessage = $"{stanceName}: {Math.Round(finalParryChance * 100, 1)}%";
                                 MoteMaker.ThrowText(targetPawn.DrawPos + new Vector3(0.5f, 0, 0.5f),
@@ -103,7 +116,10 @@ namespace Lightsaber
                 if (Rand.Value <= parryChance)
                 {
                     string parryChanceMessage = $"Parry Chance: {Math.Round(parryChance * 100, 2)}%";
-                    MoteMaker.ThrowText(new Vector3((float)targetPawn.Position.x + 1f, targetPawn.Position.y, (float)targetPawn.Position.z + 1f), targetPawn.Map, parryChanceMessage, Color.white);
+                    MoteMaker.ThrowText(new Vector3((float)targetPawn.Position.x + 1f, targetPawn.Position.y, (float)targetPawn.Position.z + 1f),
+                                      targetPawn.Map,
+                                      parryChanceMessage,
+                                      Color.white);
                     return true;
                 }
             }
@@ -115,7 +131,7 @@ namespace Lightsaber
         {
             float manipulation = pawn.health.capacities.GetLevel(PawnCapacityDefOf.Manipulation);
             int meleeSkill = pawn.skills.GetSkill(SkillDefOf.Melee).Level;
-            return meleeSkill * manipulation * 600;
+            return meleeSkill * manipulation;
         }
 
         public static float CalculateParryBonus(Pawn targetPawn, Pawn attackerPawn)
