@@ -21,6 +21,7 @@ namespace Lightsaber
         // Blade Intensities
         private static readonly string BladeIntensity1Name = "_BladeIntensity1"; // Blade Intensity 1
         private static readonly string BladeIntensity2Name = "_BladeIntensity2"; // Blade Intensity 2
+        private static readonly string UseCoreRenderingName = "_UseCoreRendering";
 
         // Core Properties
         private static readonly string CoreColor1Name = "_CoreColor1"; // Core Color 1
@@ -57,6 +58,7 @@ namespace Lightsaber
         // Blade Intensities
         public static readonly int BladeIntensity1 = Shader.PropertyToID(BladeIntensity1Name); // Blade Intensity 1 ID
         public static readonly int BladeIntensity2 = Shader.PropertyToID(BladeIntensity2Name); // Blade Intensity 2 ID
+        public static readonly int UseCoreRendering = Shader.PropertyToID(UseCoreRenderingName);
 
         // Core Properties
         public static readonly int CoreColor1 = Shader.PropertyToID(CoreColor1Name); // Core Color 1 ID

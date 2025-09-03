@@ -1,6 +1,10 @@
-﻿using RimWorld;
+﻿using HarmonyLib;
+using RimWorld;
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using UnityEngine;
 using Verse;
 // ReSharper disable All
@@ -19,6 +23,9 @@ namespace Lightsaber
         public static HashSet<int> deflectableProjectileHashes = new HashSet<int>();
         public static bool lightsaberParryEnabled = true;
         public static bool lightsaberCustomizationUndrafted = false;
+        public static bool lightsaberStanceUndrafted = false;
+        public static bool shouldGlow = true;
+        public static bool showLightsaberHolsters= true;
         public ForceLightsabers_ModSettings()
         {
         }
@@ -34,6 +41,9 @@ namespace Lightsaber
             Scribe_Values.Look(ref projectileDeflectionSelector, "projectileDeflectionSelector", false);
             Scribe_Values.Look(ref lightsaberParryEnabled, "lightsaberparryEnabled", false);
             Scribe_Values.Look(ref lightsaberCustomizationUndrafted, "lightsaberCustomizationUndrafted", false);
+            Scribe_Values.Look(ref lightsaberStanceUndrafted, "lightsaberStanceUndrafted", false);
+            Scribe_Values.Look(ref shouldGlow, "shouldGlow", false);
+            Scribe_Values.Look(ref showLightsaberHolsters, "shouldGlow", false);
             Scribe_Collections.Look(ref deflectableProjectileHashes, "deflectableProjectileHashes", LookMode.Value);
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
             {
@@ -64,7 +74,7 @@ namespace Lightsaber
         }
     }
 
-    public class TheForce_Mod : Mod
+    public class TheForceLightsaber_Mod : Mod
     {
         private enum Tab
         {
@@ -75,10 +85,50 @@ namespace Lightsaber
         private Tab currentTab = Tab.General;
         ForceLightsabers_ModSettings settings;
         Vector2 scrollPosition = Vector2.zero;
+        public static TheForceLightsaber_Mod Lightsaber_Mod;
 
-        public TheForce_Mod(ModContentPack content) : base(content)
+        public TheForceLightsaber_Mod(ModContentPack content) : base(content)
         {
+            Lightsaber_Mod = this;
             settings = GetSettings<ForceLightsabers_ModSettings>();
+            var harmony = HarmonyPatches.harmonyPatch;
+            harmony.Patch(original: AccessTools.PropertyGetter(typeof(ShaderTypeDef), nameof(ShaderTypeDef.Shader)),
+                prefix: new HarmonyMethod(typeof(TheForceLightsaber_Mod),
+                    nameof(ShaderFromAssetBundle)));
+        }
+
+        public static void ShaderFromAssetBundle(ShaderTypeDef __instance, ref Shader ___shaderInt)
+        {
+            if (__instance is not LightsaberShaderDef) return;
+            ___shaderInt = LightsaberGlowShaderLoader.ForceBundle.LoadAsset<Shader>(__instance.shaderPath);
+
+            if (___shaderInt is null)
+            {
+                Log.Error($"[Force] Failed to load Shader from path <text>\"{__instance.shaderPath}\"</text>");
+            }
+        }
+
+        public AssetBundle MainBundle
+        {
+            get
+            {
+                string text = RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "StandaloneOSX"
+                    : RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "StandaloneWindows64"
+                    : RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? "StandaloneLinux64"
+                    : throw new PlatformNotSupportedException("Unsupported Platform");
+
+                string bundlePath = Path.Combine(Content.RootDir,
+                    @"AssetBundles\" + text + "\\lightsabershaderglow.assetbundle");
+
+                AssetBundle bundle = AssetBundle.LoadFromFile(bundlePath);
+
+                if (bundle == null)
+                {
+                    Log.Error("[Force] Failed to load bundle at path: " + bundlePath);
+                }
+
+                return bundle;
+            }
         }
 
         public override void DoSettingsWindowContents(Rect inRect)
@@ -172,6 +222,9 @@ namespace Lightsaber
             listingStandard.CheckboxLabeled("Force.projectileDeflectionSelector".Translate(), ref ForceLightsabers_ModSettings.projectileDeflectionSelector, "Force.projectileDeflectionSelector".Translate());
             listingStandard.CheckboxLabeled("Force.lightsaberparry".Translate(), ref ForceLightsabers_ModSettings.lightsaberParryEnabled, "Force.lightsaberparryDesc".Translate());
             listingStandard.CheckboxLabeled("Force.lightsaberCustomizationUndrafted".Translate(), ref ForceLightsabers_ModSettings.lightsaberCustomizationUndrafted, "Force.lightsaberCustomizationUndrafted".Translate());
+            listingStandard.CheckboxLabeled("Force.lightsaberStanceUndrafted".Translate(), ref ForceLightsabers_ModSettings.lightsaberStanceUndrafted, "Force.lightsaberStanceUndrafted".Translate());
+            listingStandard.CheckboxLabeled("Force.shouldGlow".Translate(), ref ForceLightsabers_ModSettings.shouldGlow, "Force.shouldGlow".Translate());
+            listingStandard.CheckboxLabeled("Force.showLightsaberHolster".Translate(), ref ForceLightsabers_ModSettings.showLightsaberHolsters, "Force.showLightsaberHolster".Translate());
 
 
             listingStandard.Gap();
@@ -235,18 +288,16 @@ namespace Lightsaber
                 }
             }
 
-            // Calculate the height of the scroll view
+
             float scrollViewHeight = CalculateScrollViewHeight(projectileGroups, inRect.width);
             Rect viewRect = new Rect(0f, 0f, inRect.width - 16f, scrollViewHeight);
 
-            // Begin scrollable view
             Rect outRect = new Rect(inRect.x, inRect.y + 36f, inRect.width, inRect.height - 36f);
             Widgets.BeginScrollView(outRect, ref scrollPosition, viewRect);
 
             float y = 0f;
             foreach (var group in projectileGroups)
             {
-                // Draw mod group header with background
                 Rect headerRect = new Rect(0f, y, viewRect.width, 40f);
                 Widgets.DrawBoxSolid(headerRect, new Color(0.2f, 0.2f, 0.2f, 0.6f)); // Header background
                 bool isExpanded = modExpandedStates.TryGetValue(group.Key, out bool expanded) && expanded;
@@ -260,7 +311,7 @@ namespace Lightsaber
                 Widgets.Label(new Rect(headerRect.x + 40f, headerRect.y + 5f, headerRect.width - 45f, 30f), group.Key);
                 Text.Font = GameFont.Small;
 
-                y += 40f; // Increase y for the next group
+                y += 40f;
 
                 if (isExpanded)
                 {
@@ -284,14 +335,12 @@ namespace Lightsaber
                             Widgets.DrawBoxSolid(iconRect, new Color(0.5f, 0.5f, 0.5f)); // Placeholder box for missing icon
                         }
 
-                        // Checkbox and label
                         Rect labelRect = new Rect(iconRect.xMax + 10f, rowRect.y, rowRect.width - iconRect.width - 20f, 40f);
                         bool isDeflectable = ForceLightsabers_ModSettings.deflectableProjectileHashes.Contains(projectileDef.shortHash);
                         bool checkboxValue = isDeflectable;
 
                         Widgets.CheckboxLabeled(labelRect, projectileDef.label ?? projectileDef.defName, ref checkboxValue);
 
-                        // Add or remove the projectile based on checkbox state
                         if (checkboxValue && !isDeflectable)
                         {
                             ForceLightsabers_ModSettings.AddDeflectableProjectile(projectileDef);

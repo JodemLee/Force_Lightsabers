@@ -51,11 +51,10 @@ namespace Lightsaber
             if (opponent == null || opponent.Dead)
                 return pawn.Position;
 
-            // Randomize behavior: 70% circle, 20% advance, 10% retreat
             float rand = Rand.Value;
             IntVec3 baseTarget = duel.selectedTarget.Cell;
 
-            if (rand < 0.2f) // Advance toward opponent
+            if (rand < 0.2f)
             {
                 IntVec3 target = GenRadial.RadialCellsAround(opponent.Position, MinDistOpponentWhenMoving * 0.8f, false)
                     .Where(c => IsValidDuelMoveCell(pawn, c, opponent, baseTarget, opponent.Position))
@@ -112,7 +111,7 @@ namespace Lightsaber
             }
 
             // Validate path
-            using (PawnPath path = pawn.Map.pathFinder.FindPath(pawn.Position, cell, pawn))
+            using (PawnPath path = pawn.Map.pathFinder.FindPathNow(pawn.Position, cell, pawn))
             {
                 foreach (IntVec3 node in path.NodesReversed)
                 {

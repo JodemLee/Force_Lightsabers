@@ -18,10 +18,19 @@ namespace Lightsaber
             }
         }
 
+        public override void Notify_ColorChanged()
+        {
+            if (parent != null)
+            {
+                ApplyColor(parent.DrawColor);
+            }
+        }
+
+
         private void ApplyColor(Color color)
         {
             defaultColorInt = new ColorInt(color);
-            this.GlowColor = defaultColorInt; // Update the glow color to match the parent's draw color
+            this.GlowColor = defaultColorInt; 
         }
 
         public override void PostExposeData()

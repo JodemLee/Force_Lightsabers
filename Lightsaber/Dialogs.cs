@@ -208,13 +208,40 @@ namespace Lightsaber
                     GenUI.DrawTextureWithMaterial(drawRect, hiltGraphic.MatSingle.mainTexture, material);
                     GUI.color = Color.white;
                 }
+                else
+                {
+                    var hiltGraphic = lightsaberBlade.parent.Graphic;
+                    var mat = hiltGraphic.MatSingle;
+                    GUI.color = Color.white * 2;
 
-                // Draw current hilt name below preview
+                    MaterialRequest materialRequest = new MaterialRequest
+                    {
+                        mainTex = mat.mainTexture,
+                        maskTex = mat.GetMaskTexture(),
+                        shader = mat.shader,
+                    };
+
+                    Material material = MaterialPool.MatFrom(materialRequest);
+                    GenUI.DrawTextureWithMaterial(drawRect, hiltGraphic.MatSingle.mainTexture, material);
+                    GUI.color = Color.white;
+                }
+
+
                 if (lightsaberBlade?.HiltManager?.SelectedHilt != null)
                 {
                     Text.Anchor = TextAnchor.UpperCenter;
                     Text.Font = GameFont.Medium;
                     string hiltName = lightsaberBlade.HiltManager.SelectedHilt.label;
+                    Rect labelRect = new Rect(0, rect.height - 30f, rect.width, 30f);
+                    Widgets.Label(labelRect, hiltName);
+                    Text.Anchor = TextAnchor.UpperLeft;
+                    Text.Font = GameFont.Small;
+                }
+                else
+                {
+                    Text.Anchor = TextAnchor.UpperCenter;
+                    Text.Font = GameFont.Medium;
+                    string hiltName = lightsaberBlade.parent.def.label;
                     Rect labelRect = new Rect(0, rect.height - 30f, rect.width, 30f);
                     Widgets.Label(labelRect, hiltName);
                     Text.Anchor = TextAnchor.UpperLeft;
@@ -233,8 +260,6 @@ namespace Lightsaber
             float columnWidth = rect.width / 2 - SectionPadding;
             Rect leftColumn = new Rect(rect.x + SectionPadding, rect.y + SectionPadding, columnWidth, rect.height - SectionPadding * 2);
             Rect rightColumn = new Rect(leftColumn.xMax + SectionPadding, rect.y + SectionPadding, columnWidth, rect.height - SectionPadding * 2);
-
-            // Left column - blade settings and presets
             GUI.BeginGroup(leftColumn);
             try
             {
@@ -262,7 +287,7 @@ namespace Lightsaber
                     return yPos + 160f;
                 });
 
-                // Color presets moved here
+
                 yPos = DrawSectionWithHeader(ref yPos, leftColumn.width, "Force_Presets".Translate(), () =>
                 {
                     DrawPresets(new Rect(0, yPos, leftColumn.width, 120f));
@@ -522,15 +547,10 @@ namespace Lightsaber
 
         private Vector2 presetScrollPos; // Add this with other scroll position fields
 
+
         private void DrawPresets(Rect inRect)
         {
-            if (lightsaberBlade?.HiltManager?.SelectedHilt == null)
-            {
-                Widgets.Label(inRect, "No hilt selected");
-                return;
-            }
 
-            // Initialize presets with basic colors
             var presets = new Dictionary<string, Color>
                 {
                     { "Blue", new Color(0, 0, 1) },
@@ -546,11 +566,16 @@ namespace Lightsaber
 
 
             var colorPart = lightsaberBlade.HiltManager.SelectedHiltParts
-                            .FirstOrDefault(p => p.colorGenerator != null &&
+                            .FirstOrDefault(p =>
                                                 p.category != null &&
                                                 p.category.canChangeColor);
 
-            if (colorPart != null)
+            if (colorPart == LightsaberDefOf.Force_SyntheticKyberCrystalHiltPart)
+            {
+                presets.Add($"{colorPart.category.label} Color",
+                           ColorUtility.GetSyntheticCrystalColor(pawn));
+            }
+            else if (colorPart != null)
             {
                 presets.Add($"{colorPart.category.label} Color", colorPart.colorGenerator.NewRandomizedColor());
             }
@@ -558,7 +583,7 @@ namespace Lightsaber
             if (ModsConfig.IdeologyActive && pawn != null)
             {
                 if (pawn.Ideo != null) presets.Add("Ideology", pawn.Ideo.Color);
-                if (pawn.story?.favoriteColor != null) presets.Add("Favorite", pawn.story.favoriteColor.Value);
+                if (pawn.story?.favoriteColor != null) presets.Add("Favorite", pawn.story.favoriteColor.color);
             }
 
             // Layout parameters
@@ -748,6 +773,8 @@ namespace Lightsaber
             if (Widgets.ButtonText(primaryButtonRect, "Primary Color"))
             {
                 ShowColorPicker(true);
+                lightsaberBlade.parent.SetColor(lightsaberBlade.HiltManager.HiltColorOne);
+               
             }
 
             // Secondary color
@@ -760,7 +787,14 @@ namespace Lightsaber
             if (Widgets.ButtonText(secondaryButtonRect, "Secondary Color"))
             {
                 ShowColorPicker(false);
+                var property = lightsaberBlade.parent.GetType().GetProperty("DrawColorTwo");
+                if (property != null && property.CanWrite)
+                {
+                    property.SetValue(lightsaberBlade.parent, lightsaberBlade.HiltManager.HiltColorTwo);
+                }
             }
+
+           
 
             return yPos + controlHeight + verticalSpacing; // Return position including the bottom spacing
         }
@@ -783,23 +817,16 @@ namespace Lightsaber
             Rect contentRect = new Rect(0, headerRect.yMax + sectionPadding, rect.width, contentHeight);
 
             List<HiltPartCategoryDef> orderedCategories = lightsaberBlade.Props.allowedCategories ?? new List<HiltPartCategoryDef>();
-    
-    // Get all hilt parts first
-    var allHiltParts = DefDatabase<HiltPartDef>.AllDefsListForReading;
-    
-    // Find categories that actually have parts available
-    var availableCategories = orderedCategories
-        .Where(oc => oc != null && allHiltParts.Any(p => p?.category == oc)) // Compare def references directly
-        .ToList();
 
-    Log.Message($"Ordered Categories: {orderedCategories.Count}, Available Categories: {availableCategories.Count}");
-    
-    // Debug output to see what's happening
-    foreach (var cat in orderedCategories)
-    {
-        int partCount = allHiltParts.Count(p => p?.category == cat);
-        Log.Message($"Category {cat?.defName ?? "NULL"} has {partCount} parts");
-    }
+            // Get all hilt parts first
+            var allHiltParts = DefDatabase<HiltPartDef>.AllDefsListForReading;
+
+            // Find categories that actually have parts available
+            var availableCategories = orderedCategories
+                .Where(oc => oc != null && allHiltParts.Any(p => p?.category == oc)) // Compare def references directly
+                .ToList();
+
+
 
 
 
@@ -817,11 +844,6 @@ namespace Lightsaber
             finally
             {
                 Widgets.EndScrollView();
-            }
-
-            foreach (var cat in availableCategories)
-            {
-                Log.Message($"Found category: {cat.defName}");
             }
         }
 
@@ -1003,7 +1025,9 @@ namespace Lightsaber
                     lightsaberBlade.HiltManager.HiltColorTwo = selectedColor;
 
                 lightsaberBlade.HiltManager.UpdateHiltGraphic();
+
                 lightsaberBlade.parent.Notify_ColorChanged();
+
             }));
         }
 
@@ -1068,10 +1092,10 @@ namespace Lightsaber
 
         private void UpdateCurrentColor()
         {
-            bladeColor = new Color(bladeColorRed / 255f, bladeColorGreen / 255f, bladeColorBlue / 255f);
-            coreColor = new Color(coreColorRed / 255f, coreColorGreen / 255f, coreColorBlue / 255f);
-            bladeColor2 = new Color(bladeColor2Red / 255f, bladeColor2Green / 255f, bladeColor2Blue / 255f);
-            coreColor2 = new Color(coreColor2Red / 255f, coreColor2Green / 255f, coreColor2Blue / 255f);
+            bladeColor = new Color(bladeColorRed / 255f, bladeColorGreen / 255f, bladeColorBlue / 255f, bladeColorAlpha / 255);
+            coreColor = new Color(coreColorRed / 255f, coreColorGreen / 255f, coreColorBlue / 255f, coreColorAlpha / 255);
+            bladeColor2 = new Color(bladeColor2Red / 255f, bladeColor2Green / 255f, bladeColor2Blue / 255f, bladeColor2Alpha / 255);
+            coreColor2 = new Color(coreColor2Red / 255f, coreColor2Green / 255f, coreColor2Blue / 255f, coreColor2Alpha / 255);
         }
 
     }

@@ -123,11 +123,13 @@ public class HiltManager
 
         HiltMaterialPropertyBlock.SetColor("_Color", HiltColorOne);
         HiltMaterialPropertyBlock.SetColor("_ColorTwo", HiltColorTwo);
+
+
     }
 
     private Graphic DefaultHiltGraphic()
     {
-        return GraphicDatabase.Get<Graphic_Single>("DefaultHiltPath", ShaderDatabase.Cutout, Vector2.one, Color.white, Color.gray);
+        return GraphicDatabase.Get<Graphic_Single>("base", ShaderDatabase.Cutout, Vector2.one, Color.white, Color.gray);
     }
 
     public void AddHiltPart(HiltPartDef hiltPart)

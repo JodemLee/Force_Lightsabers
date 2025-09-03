@@ -5,15 +5,13 @@ namespace Lightsaber
 {
     internal class Graphic_Hilts : Graphic
     {
-        // Fields
         protected Material mat;
         private HiltManager hiltManager;
         private bool initialized = false;
         public static readonly string MaskSuffix = "_m";
         private string lastSelectedHiltGraphicPath;
 
-        // Properties
-        public override Material MatSingle => MatSingleFor(null); // Default call with no thing (or Pawn)
+        public override Material MatSingle => MatSingleFor(null);
         public override Material MatWest => MatSingle;
         public override Material MatSouth => MatSingle;
         public override Material MatEast => MatSingle;
@@ -35,19 +33,25 @@ namespace Lightsaber
 
         public void UpdateMaterial(GraphicRequest req)
         {
+            // Get the actual colors from the hilt manager if available
+            Color color1 = hiltManager?.HiltColorOne ?? req.color;
+            Color color2 = hiltManager?.HiltColorTwo ?? req.colorTwo;
+
             MaterialRequest materialRequest = new MaterialRequest
             {
                 mainTex = req.texture ?? ContentFinder<Texture2D>.Get(req.path),
                 shader = req.shader,
-                color = req.color,
-                colorTwo = req.colorTwo,
+                color = color1,  // Use HiltColorOne
+                colorTwo = color2,  // Use HiltColorTwo
                 renderQueue = req.renderQueue,
                 shaderParameters = req.shaderParameters
             };
 
             if (req.shader.SupportsMaskTex())
             {
-                materialRequest.maskTex = ContentFinder<Texture2D>.Get(maskPath.NullOrEmpty() ? (path + MaskSuffix) : maskPath, reportFailure: false);
+                materialRequest.maskTex = ContentFinder<Texture2D>.Get(
+                    maskPath.NullOrEmpty() ? (path + MaskSuffix) : maskPath,
+                    reportFailure: false);
             }
 
             mat = MaterialPool.MatFrom(materialRequest);
@@ -66,8 +70,8 @@ namespace Lightsaber
                     hiltManager.SelectedHilt.graphicData.texPath,
                     hiltManager.SelectedHilt.graphicData.Graphic.Shader,
                     hiltManager.SelectedHilt.graphicData.Graphic.drawSize,
-                    hiltManager.HiltColorOne,
-                    hiltManager.HiltColorTwo,
+                    hiltManager.HiltColorOne,  // Pass HiltColorOne
+                    hiltManager.HiltColorTwo,   // Pass HiltColorTwo
                     hiltManager.SelectedHilt.graphicData.Graphic.data,
                     0,
                     null,
@@ -82,7 +86,11 @@ namespace Lightsaber
 
         public override Graphic GetColoredVersion(Shader newShader, Color newColor, Color newColorTwo)
         {
-            return GraphicDatabase.Get<Graphic_Hilts>(path, newShader, drawSize, newColor, newColorTwo, data);
+
+            Color color1 = hiltManager?.HiltColorOne ?? newColor;
+            Color color2 = hiltManager?.HiltColorTwo ?? newColorTwo;
+
+            return GraphicDatabase.Get<Graphic_Hilts>(path, newShader, drawSize, color1, color2, data);
         }
 
         public override Material MatSingleFor(Thing thing)

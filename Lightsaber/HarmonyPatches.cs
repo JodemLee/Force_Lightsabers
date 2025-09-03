@@ -2,10 +2,13 @@
 using RimWorld;
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using System.Runtime.Remoting.Messaging;
 using UnityEngine;
+using UnityEngine.Rendering;
 using Verse;
 using static Verse.DamageWorker;
-using System.Linq;
 
 namespace Lightsaber
 {
@@ -30,33 +33,44 @@ namespace Lightsaber
             public static bool DrawEquipmentAimingPreFix(Thing eq, Vector3 drawLoc, float aimAngle)
             {
                 var eqPrimary = eq;
-                if (meleeAnimationModActive || eqPrimary == null || eqPrimary.def?.graphicData == null)
+                if (meleeAnimationModActive || eqPrimary == null || eqPrimary.def?.graphicData == null || Find.CameraDriver.CurrentZoom == CameraZoomRange.Furthest || !Find.CameraDriver.InViewOf(eqPrimary))
                 {
                     return true;
                 }
 
                 var compLightsaberBlade = compCache.GetCachedComp(eqPrimary);
-                if (compLightsaberBlade != null)
-                {
-                    bool flip = false;
-                    float angle = aimAngle - 90f;
+                var compLightsaberStance = eqPrimary.TryGetComp<Comp_LightsaberStance>();
 
+                // If either component exists, do lightsaber drawing
+                if (compLightsaberBlade != null || compLightsaberStance != null)
+                {
+                    // Get the pawn holding the equipment
+                    var pawn = (eq.ParentHolder as Pawn_EquipmentTracker)?.pawn;
+
+                    // Use blade component's rotation if available, otherwise use default behavior
+                    float currentRotation = compLightsaberBlade?.CurrentRotation ?? 0f;
+
+                    var flip = false;
+                    var angle = aimAngle - 90f;
                     if (aimAngle > 20f && aimAngle < 160f)
                     {
-                        angle += compLightsaberBlade.CurrentRotation;
+                        angle += eq.def.equippedAngleOffset;
                     }
                     else if (aimAngle > 200f && aimAngle < 340f)
                     {
-                        flip = false;
-                        angle -= 180f + compLightsaberBlade.CurrentRotation;
+                        flip = true;
+                        angle -= 180f;
+                        angle -= eq.def.equippedAngleOffset;
                     }
                     else
                     {
-                        angle += compLightsaberBlade.CurrentRotation;
+                        angle += eq.def.equippedAngleOffset;
                     }
-                    angle = compLightsaberBlade.CurrentRotation;
 
-                    if (compLightsaberBlade.IsAnimatingNow)
+                    angle = currentRotation;
+
+                    // Only do animation if we have a blade component
+                    if (compLightsaberBlade != null && compLightsaberBlade.IsAnimatingNow)
                     {
                         float animationTicks = compLightsaberBlade.AnimationDeflectionTicks;
                         if (!Find.TickManager.Paused && compLightsaberBlade.IsAnimatingNow)
@@ -73,12 +87,48 @@ namespace Lightsaber
                         }
                     }
                     angle %= 360f;
-                    Vector3 offset = compLightsaberBlade.CurrentDrawOffset;
-                    LightsaberGraphicsUtil.DrawLightsaberGraphics(eqPrimary, drawLoc + offset, angle, flip, compLightsaberBlade);
+                    Vector3 offset = compLightsaberBlade?.CurrentDrawOffset ?? Vector3.zero;
+                    if (pawn != null && compLightsaberBlade != null)
+                    {
+                        if (pawn.Rotation == Rot4.West && currentRotation <= -150)
+                        {
+                            offset += new Vector3(1f, 0f, 0);
+                        }
 
+                        if (compLightsaberBlade != null && compLightsaberBlade.IsAnimatingNow)
+                        {
+                            float oscilation = Mathf.Lerp(-1f, 0f, 1f);
+                            float verticalOffset = Mathf.Sin(oscilation);
+                            offset.y = verticalOffset;
+                        }
+                    }
+
+                    if (compLightsaberBlade != null)
+                    {
+                        LightsaberGraphicsUtil.DrawLightsaberGraphics(eqPrimary, drawLoc + offset, angle, flip, compLightsaberBlade);
+                    }
+                    else
+                    {
+                        Graphics.DrawMesh(eq.Graphic.MeshAt(Rot4.South),
+                                          drawLoc,
+                                          angle.ToQuat(),
+                                          eq.Graphic.MatSingle,
+                                          0);
+                    }
                     return false;
                 }
                 return true;
+            }
+
+            // You could also extract the offset logic to a helper method like the other mod did
+            private static Vector3 GetRotationBasedOffset(Rot4 rotation, Comp_LightsaberBlade bladeComp)
+            {
+                if (rotation == Rot4.West)
+                {
+                    return bladeComp.CurrentDrawOffset;
+                }
+                // Handle other rotations...
+                return Vector3.zero;
             }
         }
 
@@ -237,8 +287,11 @@ namespace Lightsaber
 
                 if (colorableIngredient != null && recipeDef.useIngredientsForColor)
                 {
-                    // Get the color from the CompColorable component
                     Color color = colorableIngredient.TryGetComp<CompColorable>().Color;
+                    if (colorableIngredient.def == LightsaberDefOf.Force_SyntheticCrystal)
+                    {
+                        ApplyHiltParts(__result, LightsaberDefOf.Force_SyntheticKyberCrystalHiltPart);
+                    }
                     return ApplyKyberCrystalColor(__result, color);
                 }
 
@@ -259,24 +312,52 @@ namespace Lightsaber
                     yield return product;
                 }
             }
-        }
 
-        [HarmonyPatch(typeof(Thing), "Notify_ColorChanged")]
-        public static class Patch_ThingWithComps_Notify_ColorChanged
-        {
-            [HarmonyPostfix]
-            public static void Postfix(ThingWithComps __instance)
+            private static IEnumerable<Thing> ApplyHiltParts(IEnumerable<Thing> products, HiltPartDef hiltPart)
             {
-                // Check if the ThingWithComps has CompGlowerOptions
-                var glowerComp = __instance.GetComp<CompGlower_Options>();
-                if (glowerComp != null)
+                foreach (var product in products)
                 {
-                    // Update the glow color based on the parent’s DrawColor
-                    ColorInt newGlowColor = new ColorInt(__instance.DrawColor);
-                    glowerComp.UpdateGlowerColor(newGlowColor);
+                    var comp = compCache.GetCachedComp(product);
+                    if (comp != null)
+                    {
+                        comp.HiltManager.AddHiltPart(hiltPart);
+                    }
+                    yield return product;
                 }
             }
         }
+
+
+        [HarmonyPatch(typeof(GenRecipe), "MakeRecipeProducts")]
+        public static class MakeSyntheticRecipeProducts_Patch
+        {
+            [HarmonyPostfix]
+            public static IEnumerable<Thing> Postfix(IEnumerable<Thing> __result, RecipeDef recipeDef, Pawn worker, List<Thing> ingredients, IBillGiver billGiver)
+            {
+                if (worker != null && worker.story != null && recipeDef.defName == "Force_CraftSyntheticCrystal")
+                {
+                    Color blendedColor = ColorUtility.GetSyntheticCrystalColor(worker);
+                    return ApplyColorToProducts(__result, blendedColor);
+                }
+
+                return __result;
+            }
+
+            private static IEnumerable<Thing> ApplyColorToProducts(IEnumerable<Thing> products, Color color)
+            {
+                foreach (var product in products)
+                {
+                    var comp = product.TryGetComp<CompColorable>();
+                    if (comp != null)
+                    {
+                        comp.SetColor(color);
+                    }
+                    yield return product;
+                }
+            }
+        }
+
+
 
         [HarmonyPatch(typeof(DamageWorker_AddInjury), "ApplyToPawn")]
         public static class Patch_DamageWorker_AddInjury
@@ -307,5 +388,100 @@ namespace Lightsaber
                 return new DamageResult();
             }
         }
+
+        [HarmonyPatch(typeof(DamageWorker_LightsaberCut), "ApplyToPawn")]
+        public static class Patch_DamageWorker_LightsaberParry
+        {
+            public static bool Prefix(DamageInfo dinfo, Pawn pawn, ref DamageResult __result)
+            {
+                if (pawn == null || dinfo.Weapon == null || dinfo.Instigator == null)
+                {
+                    return true;
+                }
+                if (!dinfo.Weapon.IsMeleeWeapon)
+                {
+                    return true;
+                }
+                if (LightsaberCombatUtility.CanParry(pawn, dinfo.Instigator as Pawn))
+                {
+                    __result = HandleParry(dinfo, pawn);
+                    return false;
+                }
+                return true;
+            }
+
+            private static DamageResult HandleParry(DamageInfo dinfo, Pawn pawn)
+            {
+                return new DamageResult();
+            }
+        }
+
+        [HarmonyPatch(typeof(PawnRenderTree), "SetupDynamicNodes")]
+        public static class PawnRenderTree_Lightsaber_Patch
+        {
+            private static MethodInfo addChildMethod;
+            private static MethodInfo shouldAddNodeMethod;
+
+            static PawnRenderTree_Lightsaber_Patch()
+            {
+                addChildMethod = typeof(PawnRenderTree).GetMethod("AddChild", BindingFlags.NonPublic | BindingFlags.Instance);
+                shouldAddNodeMethod = typeof(PawnRenderTree).GetMethod("ShouldAddNodeToTree", BindingFlags.Public | BindingFlags.Instance);
+
+                if (addChildMethod == null || shouldAddNodeMethod == null)
+                {
+                    Log.Error("[Lightsabers] Failed to find required PawnRenderTree methods");
+                }
+            }
+
+            [HarmonyPostfix]
+            public static void Postfix(PawnRenderTree __instance)
+            {
+                try
+                {
+                    if (__instance == null || __instance.pawn == null) return;
+                    if (!UnityData.IsInMainThread)
+                    {
+                        Log.Warning("Tried to setup lightsaber render nodes from non-main thread. Aborting.");
+                        return;
+                    }
+
+                    // Check if pawn has equipment and primary weapon
+                    if (__instance.pawn.equipment?.Primary == null) return;
+
+                    // Try to get lightsaber component
+                    var lightsaberComp = __instance.pawn.equipment.Primary.TryGetComp<Comp_LightsaberBlade>();
+                    if (lightsaberComp == null) return;
+
+                    // Check if we have nodes to add
+                    var nodesToAdd = lightsaberComp.activeRenderNodes;
+                    if (nodesToAdd == null || nodesToAdd.Count == 0) return;
+
+                    foreach (PawnRenderNode node in lightsaberComp.activeRenderNodes)
+                    {
+                        if (node != null && (bool)shouldAddNodeMethod.Invoke(__instance, new object[] { node.Props }))
+                        {
+                            addChildMethod.Invoke(__instance, new object[] { node, null });
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"Exception in PawnRenderTree_Lightsaber_Patch: {ex}");
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(Comp_LightsaberBlade), "Notify_Unequipped")]
+        public static class PawnRenderTree_RenderNodePatch
+        {
+            [HarmonyPostfix]
+            public static void Postfix(Pawn pawn)
+            {
+
+                pawn.Drawer?.renderer?.renderTree?.EnsureInitialized(PawnRenderFlags.None);
+                pawn.Drawer.renderer.SetAllGraphicsDirty();
+            }
+        }
     }
 }
+

@@ -26,6 +26,7 @@ namespace Lightsaber
         public override void PostExposeData()
         {
             base.PostExposeData();
+            
             Scribe_Values.Look(ref CrystalColor, "CrystalColor", new ColorInt(Color.white));
         }
     }

@@ -5,7 +5,6 @@ using System.Linq;
 using UnityEngine;
 using Verse;
 
-
 namespace Lightsaber
 {
     public class Comp_LightsaberStance : ThingComp
@@ -35,7 +34,8 @@ namespace Lightsaber
 
             try
             {
-                AssignHediffs(pawn, pawn.HasPsylink); // More accurate psylink check
+                AssignAbilities(pawn, pawn.HasPsylink);
+                AssignHediffs(pawn, pawn.HasPsylink);
                 ApplyStanceRotation(pawn);
             }
             catch (Exception ex)
@@ -48,7 +48,10 @@ namespace Lightsaber
         {
             base.Notify_Unequipped(pawn);
             if (pawn == null) return;
+
+            RemoveAbilities(pawn);
             RemoveHediffs(pawn);
+
             if (pawn.equipment.Primary?.GetComp<Comp_LightsaberStance>() is Comp_LightsaberStance compStance)
             {
                 compStance.savedStanceAngles = new List<float>(savedStanceAngles);
@@ -63,6 +66,41 @@ namespace Lightsaber
             if (parent is Pawn pawn && pawn.equipment?.Primary != null)
             {
                 ApplyStanceRotation(pawn);
+            }
+        }
+
+        private void AssignAbilities(Pawn pawn, bool hasPsylink)
+        {
+            if (pawn?.abilities == null) return;
+
+            var abilitiesToAdd = hasPsylink ? Props.abilitiesRequiringPsylink : Props.abilitiesNotRequiringPsylink;
+            foreach (var abilityDef in abilitiesToAdd.Where(a => a != null))
+            {
+                // Check if pawn already had this ability before we added it
+                alreadyHadAbilities[abilityDef] = pawn.abilities.abilities.Any(a => a.def == abilityDef);
+
+                if (!alreadyHadAbilities[abilityDef])
+                {
+                    pawn.abilities.GainAbility(abilityDef);
+                }
+            }
+        }
+
+        private void RemoveAbilities(Pawn pawn)
+        {
+            if (pawn?.abilities == null) return;
+
+            foreach (var abilityDef in Props.abilitiesRequiringPsylink.Concat(Props.abilitiesNotRequiringPsylink))
+            {
+                // Only remove the ability if we added it (pawn didn't have it before)
+                if (alreadyHadAbilities.TryGetValue(abilityDef, out bool hadBefore) && !hadBefore)
+                {
+                    var ability = pawn.abilities.abilities.FirstOrDefault(a => a.def == abilityDef);
+                    if (ability != null)
+                    {
+                        pawn.abilities.RemoveAbility(ability.def);
+                    }
+                }
             }
         }
 

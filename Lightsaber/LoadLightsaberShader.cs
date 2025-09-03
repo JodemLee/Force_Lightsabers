@@ -12,116 +12,60 @@ namespace Lightsaber
     [StaticConstructorOnStartup]
     public static class LightsaberGlowShaderLoader
     {
-        private static readonly string[] PlatformFolders = new string[]
+        private static AssetBundle _bundleInt;
+        private static Dictionary<string, Shader> _lookupShaders;
+        private const string _rootPathUnlit = "Assets/Shader/";
+
+        // thing specific (ideally lol)
+        public static readonly Shader LightsaberGlowShader = LoadShader(Path.Combine(_rootPathUnlit, "LightsaberGlowShader.shader"));
+        public static readonly Shader LightsaberGlowShaderSolid = LoadShader(Path.Combine(_rootPathUnlit, "LightsaberGlowShaderSolid.shader"));
+
+        public static AssetBundle ForceBundle
         {
-        "StandaloneWindows64",
-        "StandaloneLinux64",
-        "StandaloneOSX"
-            // Add other platforms as needed
-        };
-
-        static LightsaberGlowShaderLoader()
-        {
-            LoadShader();
-        }
-
-        private static void LoadShader()
-        {
-            ModContentPack modPack = LoadedModManager.RunningModsListForReading
-                .FirstOrDefault(mod => mod.PackageIdPlayerFacing.Contains("lee.theforce.lightsaber"));
-
-            if (modPack == null)
+            get
             {
-                Log.Error("[Lightsaber] Mod not found in running mod list");
-                return;
-            }
-
-            // Try platform-specific folder first
-            string bundlePath = FindPlatformSpecificBundle(modPack);
-
-            // Fallback to root AssetBundles folder if platform-specific not found
-            if (string.IsNullOrEmpty(bundlePath))
-            {
-                bundlePath = Path.Combine(modPack.RootDir, "AssetBundles", "lightsabershaderglow.assetbundle");
-            }
-
-            if (!File.Exists(bundlePath))
-            {
-                Log.Error($"[Lightsaber] AssetBundle not found at {bundlePath}");
-                return;
-            }
-
-            LoadBundleAndShader(bundlePath);
-        }
-
-        private static string FindPlatformSpecificBundle(ModContentPack modPack)
-        {
-            string currentPlatform = GetCurrentPlatformFolderName();
-            if (string.IsNullOrEmpty(currentPlatform))
-            {
-                return null;
-            }
-
-            string platformPath = Path.Combine(modPack.RootDir, "AssetBundles", currentPlatform, "lightsabershaderglow.assetbundle");
-            return File.Exists(platformPath) ? platformPath : null;
-        }
-
-        private static string GetCurrentPlatformFolderName()
-        {
-            // Map Unity's Application.platform to your folder names
-            switch (Application.platform)
-            {
-                case RuntimePlatform.WindowsPlayer:
-                    return "StandaloneWindows64";
-                case RuntimePlatform.LinuxPlayer:
-                    return "StandaloneLinux64";
-                case RuntimePlatform.OSXPlayer:
-                    return "StandaloneOSX";
-                // Add other platforms as needed
-                default:
-                    Log.Warning($"[Lightsaber] Unhandled platform: {Application.platform}");
+                if (_bundleInt != null) return _bundleInt;
+                try
+                {
+                    _bundleInt = TheForceLightsaber_Mod.Lightsaber_Mod.MainBundle;
+                    if (_bundleInt == null)
+                    {
+                        throw new Exception("MainBundle is null.");
+                    }
+                    return _bundleInt;
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning($"Failed to load AssetBundle. " +
+                                  $"Exception: {ex.Message}");
                     return null;
+                }
             }
         }
 
-        private static void LoadBundleAndShader(string bundlePath)
+        private static Shader LoadShader(string shaderName)
         {
-            AssetBundle bundle = AssetBundle.LoadFromFile(bundlePath);
-            if (bundle == null)
-            {
-                Log.Error($"[Lightsaber] Failed to load AssetBundle from {bundlePath}");
-                return;
-            }
-
+            _lookupShaders ??= new Dictionary<string, Shader>();
             try
             {
-                Shader customShader = bundle.LoadAsset<Shader>("LightsaberGlowShader");
-                if (customShader == null)
+                if (!_lookupShaders.ContainsKey(shaderName))
                 {
-                    Log.Error("[Lightsaber] LightsaberGlowShader not found in bundle");
-                    return;
+                    _lookupShaders[shaderName] = ForceBundle.LoadAsset<Shader>(shaderName);
                 }
 
-                ApplyShaderToDef(customShader);
+                Shader shader = _lookupShaders[shaderName];
+                if (shader == null)
+                {
+                    throw new Exception($"Shader '{shaderName}' " +
+                                        $"is null after loading.");
+                }
+                return shader;
             }
-            finally
+            catch (Exception ex)
             {
-                bundle.Unload(false); // Important: Unload the bundle when done
-            }
-        }
-
-        private static void ApplyShaderToDef(Shader customShader)
-        {
-            ShaderTypeDef shaderDef = DefDatabase<ShaderTypeDef>.GetNamedSilentFail("Force_LightsaberGlow");
-            if (shaderDef != null)
-            {
-                typeof(ShaderTypeDef).GetField("shaderInt", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-                    ?.SetValue(shaderDef, customShader);
-                Log.Message("[Lightsaber] Successfully applied custom shader");
-            }
-            else
-            {
-                Log.Error("[Lightsaber] ShaderTypeDef 'Force_LightsaberGlow' not found");
+                Log.Warning($"Failed to load shader: {shaderName}. " +
+                              $"Exception: {ex.Message}");
+                return ShaderDatabase.DefaultShader;
             }
         }
     }

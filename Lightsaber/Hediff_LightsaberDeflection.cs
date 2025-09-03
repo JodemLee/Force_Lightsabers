@@ -19,41 +19,68 @@ namespace Lightsaber
 
         public virtual void DeflectProjectile(Projectile projectile)
         {
-            if (projectile == null || pawn == null)
-            {
-                Log.Warning("Projectile or pawn is null in DeflectProjectile.");
-                return;
-            }
-
             try
             {
+                // Early exit if critical components are null
+                if (projectile == null || pawn == null || pawn.Map == null)
+                {
+                    return;
+                }
+
+                // Verify projectile is still valid
+                if (projectile.Destroyed || !projectile.Spawned)
+                {
+                    return;
+                }
+
+                // Verify pawn is capable of deflecting
+                if (pawn.Dead || pawn.Downed || !pawn.Spawned)
+                {
+                    return;
+                }
+
+                // Trigger visual effects
                 LightsaberCombatUtility.TriggerDeflectionEffect(projectile);
 
+                // Record deflection information
                 _lastInterceptAngle = projectile.ExactPosition.AngleToFlat(pawn.TrueCenter());
                 _lastInterceptTicks = Find.TickManager.TicksGame;
                 _drawInterceptCone = true;
 
-                foreach (var weapon in pawn.equipment.AllEquipmentListForReading)
+                // Process each lightsaber weapon
+                bool foundLightsaber = false;
+                foreach (var weapon in pawn.equipment?.AllEquipmentListForReading ?? Enumerable.Empty<ThingWithComps>())
                 {
-                    if (weapon.TryGetComp<Comp_LightsaberBlade>() is Comp_LightsaberBlade lightsaber)
+                    var lightsaber = weapon?.TryGetComp<Comp_LightsaberBlade>();
+                    if (lightsaber == null) continue;
+
+                    foundLightsaber = true;
+
+                    try
                     {
+                        // Calculate deflection parameters
                         float angleDifference = Mathf.Abs(projectile.ExactPosition.AngleToFlat(pawn.TrueCenter()) - _lastInterceptAngle);
-                        lightsaber.AnimationDeflectionTicks = (int)Mathf.Clamp(
+                        int deflectionTicks = (int)Mathf.Clamp(
                             LightsaberCombatUtility.CalculateDeflectionTicks(
                                 projectile.def.projectile.speed,
                                 angleDifference,
-                                pawn.skills.GetSkill(SkillDefOf.Melee).Level
+                                pawn.skills?.GetSkill(SkillDefOf.Melee)?.Level ?? 0
                             ),
                             LightsaberCombatUtility.MinDeflectionTicks,
                             LightsaberCombatUtility.MaxDeflectionTicks
                         );
 
+                        lightsaber.AnimationDeflectionTicks = deflectionTicks;
                         lightsaber.targetScaleForCore1AndBlade1 = new Vector3(lightsaber.bladeLength, 1f, lightsaber.bladeLength);
                         lightsaber.targetScaleForCore2AndBlade2 = new Vector3(lightsaber.bladeLength, 1f, lightsaber.bladeLength);
 
                         Vector3 deflectionDirection = Quaternion.Euler(0f, _lastInterceptAngle, 0f) * Vector3.forward;
                         Vector3 deflectionLocation = pawn.TrueCenter() + deflectionDirection * LightsaberCombatUtility.DefaultDeflectionDistance;
                         LightsaberCombatUtility.CreateDeflectionFleck(lightsaber, deflectionLocation, _lastInterceptAngle, pawn.Map);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Error($"Error processing lightsaber {weapon}: {ex}");
                     }
                 }
 
@@ -63,7 +90,7 @@ namespace Lightsaber
             }
             catch (Exception ex)
             {
-                Log.Error($"Error in DeflectProjectile: {ex.Message}");
+                Log.Error($"Critical error in DeflectProjectile: {ex}\n{ex.StackTrace}");
             }
         }
 
@@ -85,14 +112,17 @@ namespace Lightsaber
         {
             foreach (var weapon in pawn.equipment.AllEquipmentListForReading)
             {
-                if (weapon.TryGetComp<Comp_LightsaberBlade>() != null)
+                if (pawn.Drafted || !pawn.Drafted && ForceLightsabers_ModSettings.lightsaberStanceUndrafted)
                 {
-                    if (!_weaponStances.TryGetValue(weapon, out var stance))
+                    if (weapon.TryGetComp<Comp_LightsaberStance>() != null)
                     {
-                        stance = new Gizmo_LightsaberStance(pawn, this, weapon);
-                        _weaponStances[weapon] = stance;
+                        if (!_weaponStances.TryGetValue(weapon, out var stance))
+                        {
+                            stance = new Gizmo_LightsaberStance(pawn, this, weapon);
+                            _weaponStances[weapon] = stance;
+                        }
+                        yield return stance;
                     }
-                    yield return stance;
                 }
             }
         }

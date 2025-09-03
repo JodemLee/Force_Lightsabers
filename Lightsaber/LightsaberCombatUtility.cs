@@ -76,30 +76,45 @@ namespace Lightsaber
 
                             if (Rand.Value <= finalParryChance)
                             {
-                                
-                                
-                                //    if (Rand.Value < 1f)
-                                //{
-                                //    // Create saber lock job for both pawns
-                                //    targetPawn.jobs.StartJob(
-                                //        JobMaker.MakeJob(DefDatabase<JobDef>.GetNamed("Force_SaberLock"), attacker),
-                                //        JobCondition.InterruptForced
-                                //    );
-                                //    attacker.jobs.StartJob(
-                                //        JobMaker.MakeJob(DefDatabase<JobDef>.GetNamed("Force_SaberLock"), targetPawn),
-                                //        JobCondition.InterruptForced
-                                //    );
-
-                                //    MoteMaker.ThrowText(targetPawn.DrawPos, targetPawn.Map, "Saber Lock!", Color.red);
-                                //    return true;
-                                //}
-
                                 string stanceName = targetStanceData.ShortLabel ?? targetStanceData.StanceID;
                                 string parryMessage = $"{stanceName}: {Math.Round(finalParryChance * 100, 1)}%";
                                 MoteMaker.ThrowText(targetPawn.DrawPos + new Vector3(0.5f, 0, 0.5f),
-                                                  targetPawn.Map,
-                                                  parryMessage,
-                                                  Color.yellow);
+                                                          targetPawn.Map,
+                                                          parryMessage,
+                                                          Color.yellow);
+
+
+                                var parryingWeapon = targetPawn.equipment?.Primary;
+                                if (parryingWeapon != null)
+                                {
+                                    bool isConductiveParry = IsConductiveMaterial(parryingWeapon.Stuff) ||
+                                                            parryingWeapon.def.HasModExtension<ModExtension_Conductive>();
+
+                                    if (isConductiveParry)
+                                    {
+                                        float baseChance = 1f;
+                                        float materialMultiplier = parryingWeapon.def.GetModExtension<ModExtension_Conductive>()?.shortCircuitChance ??
+                                                                 parryingWeapon.Stuff.GetModExtension<ModExtension_Conductive>()?.shortCircuitChance ?? 1f;
+                                        float finalChance = baseChance * materialMultiplier;
+
+                                        if (Rand.Chance(finalChance))
+                                        {
+                                            BodyPartRecord handPart = attacker.RaceProps.body.GetPartsWithDef(BodyPartDefOf.Hand).FirstOrDefault();
+                                            if (handPart != null)
+                                            {
+                                                Hediff shortCircuit = HediffMaker.MakeHediff(
+                                                    LightsaberDefOf.Force_LightsaberShortCircuit,
+                                                    attacker,
+                                                    handPart);
+
+                                                shortCircuit.Severity = 1f;
+                                                attacker.health.AddHediff(shortCircuit);
+                                                MoteMaker.ThrowText(attacker.DrawPos, attacker.Map, "Energy Feedback!", Color.yellow);
+                                            }
+                                        }
+                                    }
+                                }
+
                                 return true;
                             }
                         }
@@ -120,11 +135,60 @@ namespace Lightsaber
                                       targetPawn.Map,
                                       parryChanceMessage,
                                       Color.white);
+
+                    var parryingWeapon = targetPawn.equipment?.Primary;
+                    var lightsaber = attacker.equipment?.Primary.TryGetComp<Comp_LightsaberBlade>();
+                    if (parryingWeapon != null && lightsaber != null)
+                    {
+                        bool hasConductiveHiltPart = false;
+                        var lightsaberComp = parryingWeapon.TryGetComp<Comp_LightsaberBlade>();
+                        if (lightsaberComp != null && lightsaberComp.HiltManager != null && lightsaberComp.HiltManager.SelectedHiltParts != null)
+                        {
+                            hasConductiveHiltPart = lightsaberComp.HiltManager.SelectedHiltParts
+                                .Any(part => part.HasModExtension<ModExtension_Conductive>());
+                        }
+
+                        bool isConductiveParry = IsConductiveMaterial(parryingWeapon.Stuff) ||
+                        parryingWeapon.def.HasModExtension<ModExtension_Conductive>() ||
+                        hasConductiveHiltPart;
+
+                        if (isConductiveParry)
+                        {
+                            float baseChance = 1f;
+                            float materialMultiplier = parryingWeapon.def.GetModExtension<ModExtension_Conductive>()?.shortCircuitChance ??
+                                                     parryingWeapon.Stuff.GetModExtension<ModExtension_Conductive>()?.shortCircuitChance ?? 1f;
+                            float finalChance = baseChance * materialMultiplier;
+
+                            if (Rand.Chance(finalChance))
+                            {
+                                BodyPartRecord handPart = attacker.RaceProps.body.GetPartsWithDef(BodyPartDefOf.Hand).FirstOrDefault();
+                                if (handPart != null)
+                                {
+                                    Hediff shortCircuit = HediffMaker.MakeHediff(
+                                        LightsaberDefOf.Force_LightsaberShortCircuit,
+                                        attacker,
+                                        handPart);
+
+                                    shortCircuit.Severity = 1f;
+                                    attacker.health.AddHediff(shortCircuit);
+                                    MoteMaker.ThrowText(attacker.DrawPos, attacker.Map, "Energy Feedback!", Color.yellow);
+                                }
+                            }
+                        }
+                    }
                     return true;
                 }
             }
 
             return false;
+        }
+
+        private static bool IsConductiveMaterial(ThingDef stuff)
+        {
+            if (stuff == null)
+                return false;
+
+            return stuff.GetModExtension<ModExtension_Conductive>() != null;
         }
 
         public static float GetAdjustedMeleeSkill(Pawn pawn)

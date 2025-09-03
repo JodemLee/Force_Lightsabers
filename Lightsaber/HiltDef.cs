@@ -1,5 +1,6 @@
 ﻿using Lightsaber;
 using RimWorld;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -34,6 +35,7 @@ namespace Lightsaber
         public List<HediffDef> bonusDamageHediff;
         public List<DamageDef> damageDefs;
         public float commonality = 1f;
+        public List<HiltEffectors> effects;
 
         private Dictionary<StatDef, float> _statOffsetLookup;
         public Dictionary<StatDef, float> StatOffsetLookup =>
@@ -60,7 +62,8 @@ namespace Lightsaber
 
         public override void TransformValue(StatRequest req, ref float val)
         {
-            if (req.Thing is not Pawn pawn || pawn.equipment?.Primary == null) return;
+            if (parentStat == null || req.Thing is not Pawn pawn || pawn.equipment?.Primary == null)
+                return;
 
             var cache = GetStatCache(pawn, parentStat);
             val += cache.StatOffset;
@@ -93,6 +96,12 @@ namespace Lightsaber
 
         private EquipmentStatCache GetStatCache(Pawn pawn, StatDef statDef)
         {
+            if (pawn == null || statDef == null)
+            {
+                Log.WarningOnce($"Null pawn or statDef in GetStatCache ({pawn}, {statDef})", 76453321);
+                return new EquipmentStatCache(null, null, null);
+            }
+
             if (!statCacheDict.TryGetValue(pawn, out var pawnCache))
             {
                 pawnCache = new Dictionary<StatDef, EquipmentStatCache>();
@@ -107,7 +116,16 @@ namespace Lightsaber
 
             if (statCache.IsStale)
             {
-                statCache.Reset();
+                try
+                {
+                    statCache.Reset();
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"Error resetting stat cache for {pawn}: {ex}");
+                    statCache = new EquipmentStatCache(pawn, statDef, category);
+                    pawnCache[statDef] = statCache;
+                }
             }
 
             return statCache;
@@ -141,24 +159,39 @@ namespace Lightsaber
 
                 StatOffset = 0f;
                 ExplanationParts.Clear();
-
-                var primary = Pawn.equipment?.Primary;
-                if (primary == null) return;
-
-                var lightsaberComp = compCache.GetCachedComp(primary);
-                if (lightsaberComp?.parent.ParentHolder?.ParentHolder is not Pawn weaponWearer || weaponWearer != Pawn)
+                if (Pawn?.equipment?.Primary == null)
+                    return;
+                var lightsaberComp = compCache.GetCachedComp(Pawn.equipment.Primary);
+                if (lightsaberComp?.parent == null)
+                    return;
+                if (!IsEquipmentWornByPawn(lightsaberComp.parent, Pawn))
                     return;
 
-                var hiltParts = lightsaberComp.HiltManager.SelectedHiltParts;
-                if (hiltParts == null || hiltParts.Count == 0) return;
+                ProcessHiltParts(lightsaberComp);
+            }
+
+            private bool IsEquipmentWornByPawn(Thing equipment, Pawn pawn)
+            {
+                // Check all possible ways equipment can be associated with a pawn
+                return (equipment.ParentHolder is Pawn_EquipmentTracker et && et.pawn == pawn) ||
+                       (equipment.ParentHolder is Pawn_InventoryTracker it && it.pawn == pawn) ||
+                       (equipment.holdingOwner?.Owner is Pawn p && p == pawn);
+            }
+
+            private void ProcessHiltParts(Comp_LightsaberBlade lightsaberComp)
+            {
+                var hiltParts = lightsaberComp.HiltManager?.SelectedHiltParts;
+                if (hiltParts == null || hiltParts.Count == 0)
+                    return;
 
                 var relevantParts = Category != null
-                    ? hiltParts.Where(p => p.category == Category).ToList()
+                    ? hiltParts.Where(p => p?.category == Category).ToList()
                     : hiltParts;
 
                 foreach (var part in relevantParts)
                 {
-                    if (part.StatOffsetLookup.TryGetValue(StatDef, out float partOffset) && partOffset != 0f)
+                    if (part?.StatOffsetLookup?.TryGetValue(StatDef, out float partOffset) == true &&
+                        partOffset != 0f)
                     {
                         StatOffset += partOffset;
                         ExplanationParts.Add($"{part.label}: {partOffset:+0.##;-0.##} to {StatDef.label}");

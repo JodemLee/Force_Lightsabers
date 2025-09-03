@@ -1,7 +1,14 @@
-﻿using System.Collections.Generic;
+﻿using RimWorld;
+using RimWorld.Planet;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.Remoting.Messaging;
 using UnityEngine;
 using Verse;
+using Verse.Noise;
 using Verse.Sound;
+using static Verse.DamageWorker;
 
 namespace Lightsaber
 {
@@ -10,6 +17,7 @@ namespace Lightsaber
     {
         private float rotationAngle = 0f;
         public int ticksPerFrame = 8;
+        private CompGlower compGlower;
         public int TicksToImpact => ticksToImpact;
         Projectile projectile;
         private Pawn _originalLauncher;
@@ -28,6 +36,22 @@ namespace Lightsaber
 
             base.Launch(launcher, origin, usedTarget, intendedTarget, hitFlags, preventFriendlyFire);
         }
+
+        protected override void TickInterval(int delta)
+        {
+            base.TickInterval(delta);
+            if (DestinationIsValid() && DestinationIsMoving())
+            {
+                UpdateTrajectory();
+            }
+            else
+            {
+                return;
+            }
+
+
+        }
+
         private float ArcHeightFactor
         {
             get
@@ -40,20 +64,6 @@ namespace Lightsaber
                 }
 
                 return num;
-            }
-        }
-
-        public override void Tick()
-        {
-            base.Tick();
-
-            if (DestinationIsValid() && DestinationIsMoving())
-            {
-                UpdateTrajectory();
-            }
-            else
-            {
-                return;
             }
         }
 
@@ -70,11 +80,6 @@ namespace Lightsaber
             if (thing is not Pawn pawn) return false;
 
             return pawn.pather?.MovingNow ?? false;
-        }
-
-        private void DestroyProjectile()
-        {
-            Destroy();
         }
 
         private void UpdateTrajectory()
@@ -137,11 +142,10 @@ namespace Lightsaber
                 Graphics.DrawMesh(MeshPool.GridPlane(graphicToDraw.drawSize), DrawPos, rotation, graphicToDraw.MatSingle, 0);
             }
 
-            // Handle lightsaber-specific rendering (blade + hilt if available)
             if (compLightsaberBlade != null)
             {
 
-                Graphic hiltGraphic = compLightsaberBlade.HiltManager.SelectedHilt?.graphicData?.Graphic;
+                var hiltGraphic = compLightsaberBlade.HiltManager.SelectedHilt?.graphicData?.Graphic;
                 if (hiltGraphic != null)
                 {
                     Graphics.DrawMesh(
@@ -153,6 +157,18 @@ namespace Lightsaber
                         null,
                         0,
                         compLightsaberBlade.HiltManager.HiltMaterialPropertyBlock
+                    );
+                }
+                else
+                {
+                    Graphics.DrawMesh(
+                        MeshPool.GridPlane(compLightsaberBlade.parent.Graphic.drawSize),
+                        DrawPos,
+                        rotation,
+                        compLightsaberBlade.parent.Graphic.MatSingle,
+                        0,
+                        null,
+                        0
                     );
                 }
 
@@ -186,7 +202,7 @@ namespace Lightsaber
                 0,
                 null,
                 0,
-                compLightsaberBlade.propertyBlock
+                compLightsaberBlade.PropertyBlock
             );
 
         }
@@ -205,42 +221,198 @@ namespace Lightsaber
 
         protected override void Impact(Thing hitThing, bool blockedByShield = false)
         {
-            if (launcher == null || _originalLauncher == null)
+            try
             {
-                return;
+                if (this.Destroyed || !this.Spawned)
+                {
+                    Log.Warning("Trying to impact with destroyed or unspawned projectile");
+                    return;
+                }
+
+                Map map = this.Map;
+                if (map == null)
+                {
+                    Log.Warning("Projectile map is null during impact");
+                    return;
+                }
+
+
+                Pawn effectiveLauncher = _originalLauncher ?? launcher as Pawn;
+
+                base.Impact(hitThing, blockedByShield);
+
+                if (!blockedByShield)
+                {
+                    HitImpact(hitThing, map);
+                }
+
+                if (effectiveLauncher != null &&
+                    effectiveLauncher.Spawned &&
+                    effectiveLauncher.equipment?.Primary != null)
+                {
+                    try
+                    {
+                        IntVec3 moteSpawnPos = hitThing?.Position ?? Position;
+
+                        if (!moteSpawnPos.IsValid)
+                        {
+                            Log.Warning("Invalid mote spawn position");
+                            return;
+                        }
+
+                        MoteLightSaberReturn mote = (MoteLightSaberReturn)ThingMaker.MakeThing(ThingDef.Named("Mote_LightSaberReturn"));
+                        if (mote == null)
+                        {
+                            Log.Warning("Failed to create return mote");
+                            return;
+                        }
+
+                        mote.exactPosition = moteSpawnPos.ToVector3Shifted();
+                        mote.rotationRate = 0f;
+                        mote.SetLauncher(effectiveLauncher, effectiveLauncher.equipment.Primary.Graphic);
+
+                        Thing spawnedMote = GenSpawn.Spawn(mote, moteSpawnPos, map);
+                        if (spawnedMote == null)
+                        {
+                            Log.Warning("Failed to spawn return mote");
+                            return;
+                        }
+
+
+                        SoundDef soundDef = SoundDef.Named("Force_ForceThrow_Return");
+                        if (soundDef != null)
+                        {
+                            soundDef.PlayOneShot(new TargetInfo(moteSpawnPos, map));
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Error($"Error creating return effect: {ex}");
+                    }
+                }
+
             }
-
-            Map map = this.Map;
-            if (map == null)
+            catch (Exception ex)
             {
-                return;
+                Log.Error($"Critical error in LightSaberProjectile.Impact: {ex}\n{ex.StackTrace}");
             }
+        }
 
-            base.Impact(hitThing, blockedByShield);
-
-            Impact(hitThing, false);
-
-            if (launcher is Pawn cachedLauncher && cachedLauncher.equipment?.Primary != null)
+        protected virtual void HitImpact(Thing hitThing, Map map)
+        {
+            try
             {
-                IntVec3 moteSpawnPos = hitThing != null ? hitThing.Position : Position;
-
-                MoteLightSaberReturn mote = (MoteLightSaberReturn)ThingMaker.MakeThing(ThingDef.Named("Mote_LightSaberReturn"));
-                if (mote == null)
+               
+                if (map == null)
                 {
                     return;
                 }
 
-                mote.exactPosition = moteSpawnPos.ToVector3Shifted();
-                mote.rotationRate = 0f;
-                mote.SetLauncher(_originalLauncher, _originalLauncher.equipment.Primary.Graphic);
+                int damageAmount;
+                float armorPenetration;
+                DamageDef damageDef;
 
-                GenSpawn.Spawn(mote, moteSpawnPos, map);
-
-                SoundDef soundDef = SoundDef.Named("Force_ForceThrow_Return");
-                if (soundDef != null)
+                if (_originalLauncher?.equipment?.Primary != null && !_originalLauncher.equipment.Primary.Destroyed)
                 {
-                    soundDef.PlayOneShot(new TargetInfo(moteSpawnPos, map));
+                    ThingWithComps weapon = _originalLauncher.equipment.Primary;
+
+                    if (weapon.def?.tools != null && weapon.def.tools.Any())
+                    {
+                        Tool selectedTool = LightsaberCombatUtility.SelectWeightedTool(weapon.def.tools);
+                        ToolCapacityDef mainCapacity = selectedTool?.capacities?.FirstOrDefault();
+
+                        damageAmount = (int)(selectedTool?.power ?? def.projectile.GetDamageAmount(this, null));
+                        armorPenetration = selectedTool?.armorPenetration ?? def.projectile.GetArmorPenetration(this, null);
+                        damageDef = mainCapacity?.Maneuvers?.FirstOrDefault()?.verb?.meleeDamageDef ?? def.projectile.damageDef;
+
+                    }
+                    else
+                    {
+                        damageAmount = def.projectile.GetDamageAmount(this, null);
+                        armorPenetration = def.projectile.GetArmorPenetration(this, null);
+                        damageDef = def.projectile.damageDef;
+                    }
                 }
+                else
+                {
+                    damageAmount = def.projectile.GetDamageAmount(this, null);
+                    armorPenetration = def.projectile.GetArmorPenetration(this, null);
+                    damageDef = def.projectile.damageDef;
+                }
+
+                var logEntry = new BattleLogEntry_RangedImpact(
+                    launcher,
+                    hitThing,
+                    intendedTarget.Thing,
+                    equipmentDef,
+                    def,
+                    targetCoverDef
+                );
+                Find.BattleLog?.Add(logEntry);
+
+                if (hitThing != null)
+                {
+
+                    var dinfo = new DamageInfo(
+                        damageDef ?? DamageDefOf.Blunt,
+                        Mathf.Max(1, damageAmount),
+                        armorPenetration,
+                        ExactRotation.eulerAngles.y,
+                        launcher
+                    );
+
+
+                    DamageResult result = hitThing.TakeDamage(dinfo);
+                    if (logEntry != null) result.AssociateWithLog(logEntry);
+
+
+                    if (hitThing is Pawn pawn &&
+                        pawn.stances != null &&
+                        !pawn.Downed &&
+                        pawn.BodySize <= def.projectile.stoppingPower + 0.001f)
+                    {
+                        pawn.stances.stagger.StaggerFor(95);
+                    }
+
+                    if (def.projectile.extraDamages != null)
+                    {
+                        foreach (var extra in def.projectile.extraDamages)
+                        {
+                            if (Rand.Chance(extra.chance))
+                            {
+                                var extraDinfo = new DamageInfo(
+                                    extra.def ?? damageDef,
+                                    extra.amount,
+                                    extra.AdjustedArmorPenetration(),
+                                    ExactRotation.eulerAngles.y,
+                                    launcher
+                                );
+                                var extraResult = hitThing.TakeDamage(extraDinfo);
+                                extraResult.AssociateWithLog(logEntry);
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    SoundDefOf.BulletImpact_Ground?.PlayOneShot(new TargetInfo(Position, map));
+
+                    TerrainDef terrain = Position.GetTerrain(map);
+
+                    if (terrain?.takeSplashes ?? false)
+                    {
+                        FleckMaker.WaterSplash(ExactPosition, map, Mathf.Sqrt(3) * 1f, 4f);
+                    }
+                    else
+                    {
+                        FleckMaker.Static(ExactPosition, map, FleckDefOf.ShotHit_Dirt);
+                    }
+                }
+
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"Error in LightSaberProjectile.HitImpact: {ex}");
             }
         }
     }
@@ -261,7 +433,6 @@ namespace Lightsaber
                 ThingWithComps equippedWeapon = launcher.equipment.Primary;
                 originalLauncher = launcher;
 
-                // Check if the weapon has a lightsaber blade component
                 Comp_LightsaberBlade compLightsaberBlade = equippedWeapon.TryGetComp<Comp_LightsaberBlade>();
                 if (compLightsaberBlade != null && compLightsaberBlade.HiltManager?.SelectedHilt?.graphicData != null)
                 {
@@ -271,7 +442,6 @@ namespace Lightsaber
                 }
                 else
                 {
-                    // Fall back to the weapon's default graphic
                     originalWeaponGraphic = equippedWeapon.Graphic;
                     this.instanceColor = equippedWeapon.Graphic?.color ?? this.instanceColor;
                 }

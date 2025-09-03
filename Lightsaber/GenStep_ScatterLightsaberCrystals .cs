@@ -1,7 +1,11 @@
 ﻿using RimWorld;
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEngine;
 using Verse;
+using Verse.Noise;
+using Verse.Sound;
 
 namespace Lightsaber
 {
@@ -58,3 +62,4 @@ namespace Lightsaber
         }
     }
 }
+

@@ -15,7 +15,6 @@ namespace Lightsaber
             // Check if this is a duel situation
             if (victim is Pawn pawn && IsInDuel(pawn, dinfo.Instigator as Pawn))
             {
-                // Create a copy of the damage info but change it to blunt damage
                 DamageInfo bluntDinfo = new DamageInfo(
                     def: LightsaberDefOf.Force_BluntLightsaber,
                     amount: 1f,
@@ -31,8 +30,6 @@ namespace Lightsaber
                 );
                 return base.Apply(bluntDinfo, victim);
             }
-
-            // Normal behavior for non-duel situations
             if (!(victim is Pawn))
             {
                 return base.Apply(dinfo, victim);
@@ -42,7 +39,6 @@ namespace Lightsaber
 
         private bool IsInDuel(Pawn victim, Pawn instigator)
         {
-            // Check if either pawn is in a duel
             return (victim.GetLord()?.LordJob is LordJob_Ritual_LightsaberDuel) ||
                    (instigator?.GetLord()?.LordJob is LordJob_Ritual_LightsaberDuel);
         }
@@ -61,8 +57,15 @@ namespace Lightsaber
             {
                 dinfo.Def.armorCategory = dinfo.Def.armorCategory;
             }
-
+            if (!pawn.RaceProps.IsMechanoid && IsYoungling(pawn))
+            {
+                if (dinfo.Instigator.def.defName == "Force_YounglingSlayer")
+                {
+                    dinfo.SetAmount(dinfo.Amount * 2f);
+                }
+            }
             DamageResult damageResult = new DamageResult();
+
             if (dinfo.Amount <= 0f)
             {
                 return damageResult;
@@ -188,11 +191,17 @@ namespace Lightsaber
 
         private void ApplyDamageToPart(DamageInfo dinfo, Pawn pawn, DamageResult result)
         {
-            BodyPartRecord exactPartFromDamageInfo = GetExactPartFromDamageInfo(dinfo, pawn);
-            if (exactPartFromDamageInfo == null)
+            if (pawn.health?.hediffSet == null || pawn.Dead)
             {
                 return;
             }
+
+            BodyPartRecord exactPartFromDamageInfo = GetExactPartFromDamageInfo(dinfo, pawn);
+            if (exactPartFromDamageInfo == null || pawn.health.hediffSet.PartIsMissing(exactPartFromDamageInfo))
+            {
+                return;
+            }
+
             dinfo.SetHitPart(exactPartFromDamageInfo);
             float num = dinfo.Amount;
             bool num2 = !dinfo.InstantPermanentInjury && !dinfo.IgnoreArmor;
@@ -206,6 +215,11 @@ namespace Lightsaber
                 {
                     result.diminished = true;
                     result.diminishedByMetalArmor = diminishedByMetalArmor;
+
+                    if (deflectedByMetalArmor && dinfo.Instigator is Pawn instigator)
+                    {
+                        CheckForShortCircuit(dinfo, pawn, instigator, exactPartFromDamageInfo);
+                    }
                 }
             }
             if (dinfo.Def.ExternalViolenceFor(pawn))
@@ -238,14 +252,11 @@ namespace Lightsaber
 
         protected override void ApplySpecialEffectsToPart(Pawn pawn, float totalDamage, DamageInfo dinfo, DamageResult result)
         {
-            // Get the lightsaber blade component from the attacker's weapon
             var lightsaberBladeAttacker = dinfo.Instigator is Pawn attacker ?
                 attacker.equipment?.Primary?.TryGetComp<Comp_LightsaberBlade>() : null;
 
-            // Check if we have a lightsaber with hilt parts that specify damage types
             if (lightsaberBladeAttacker != null && lightsaberBladeAttacker.HiltManager?.SelectedHiltParts != null)
             {
-                // Collect all damageDefs from all hilt parts
                 var combinedDamageDefs = new List<DamageDef>();
                 foreach (var hiltPart in lightsaberBladeAttacker.HiltManager.SelectedHiltParts)
                 {
@@ -255,13 +266,9 @@ namespace Lightsaber
                     }
                 }
 
-                // If we have any custom damage defs, use them instead of the default one
                 if (combinedDamageDefs.Count > 0)
                 {
-                    // Randomly select one of the damage defs or use some logic to choose
                     DamageDef selectedDamageDef = combinedDamageDefs.RandomElement();
-
-                    // Create new damage info with the selected damage type
                     DamageInfo newDinfo = new DamageInfo(
                         def: selectedDamageDef,
                         amount: totalDamage,
@@ -488,6 +495,58 @@ namespace Lightsaber
             return false;
         }
 
+        private void CheckForShortCircuit(DamageInfo dinfo, Pawn victim, Pawn instigator, BodyPartRecord hitPart)
+        {
+
+            if (instigator.equipment?.Primary?.TryGetComp<Comp_LightsaberBlade>() == null)
+                return;
+
+            List<Apparel> conductiveArmor = victim.apparel?.WornApparel?.Where(apparel =>
+                apparel.def.apparel?.CoversBodyPart(hitPart) == true &&
+                (
+                    IsConductiveMaterial(apparel.Stuff) || 
+                    apparel.def.HasModExtension<ModExtension_Conductive>()
+                )
+            ).ToList();
+
+            if (conductiveArmor == null || !conductiveArmor.Any())
+                return;
+
+            float baseChance = 1f;
+            float materialMultiplier = conductiveArmor.Max(a =>
+                a.def.GetModExtension<ModExtension_Conductive>()?.shortCircuitChance ?? a.Stuff.GetModExtension<ModExtension_Conductive>()?.shortCircuitChance ?? 1f);
+            float finalChance = baseChance * materialMultiplier;
+
+            if (!Rand.Chance(finalChance))
+                return;
+
+            
+            BodyPartRecord handPart = instigator.RaceProps.body.GetPartsWithDef(BodyPartDefOf.Hand).FirstOrDefault();
+            if (handPart != null)
+            {
+                Hediff shortCircuit = HediffMaker.MakeHediff(
+                    LightsaberDefOf.Force_LightsaberShortCircuit,
+                    instigator,
+                    handPart);
+
+                shortCircuit.Severity = 1f;
+                instigator.health.AddHediff(shortCircuit);
+                instigator.stances.stunner.StunFor(30, victim);
+                instigator.skills.Notify_SkillDisablesChanged();
+
+                MoteMaker.ThrowText(instigator.DrawPos, instigator.Map, "Energy Feedback!", Color.yellow);
+            }
+        }
+
+        private bool IsConductiveMaterial(ThingDef stuff)
+        {
+            if (stuff == null)
+                return false;
+
+            return stuff.GetModExtension<ModExtension_Conductive>() != null;
+        }
+
+
         //protected override BodyPartRecord ChooseHitPart(DamageInfo dinfo, Pawn pawn)
         //{
         //    List<BodyPartRecord> manipulationSources = pawn.health.hediffSet.GetNotMissingParts(BodyPartHeight.Undefined, BodyPartDepth.Undefined)
@@ -502,6 +561,14 @@ namespace Lightsaber
         //        return pawn.health.hediffSet.GetRandomNotMissingPart(dinfo.Def, dinfo.Height, BodyPartDepth.Outside);
         //    }
         //}
+
+        private bool IsYoungling(Pawn pawn)
+        {
+            if (pawn.ageTracker == null) return false;
+
+            // RimWorld uses biological age in years
+            return pawn.ageTracker.AgeBiologicalYears < 18;
+        }
 
     }
 

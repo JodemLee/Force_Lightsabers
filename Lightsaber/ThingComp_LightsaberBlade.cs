@@ -1,12 +1,13 @@
-﻿using RimWorld;
+﻿using Lightsaber;
+using RimWorld;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
-using System.Runtime.Remoting.Messaging;
 using UnityEngine;
 using Verse;
+using Verse.AI.Group;
 using Verse.Sound;
+using static RimWorld.EffecterMaintainer;
 
 namespace Lightsaber
 {
@@ -20,10 +21,15 @@ namespace Lightsaber
         public Color coreColor = Color.white;
         public Color bladeColor2 = Color.white;
         public Color coreColor2 = Color.white;
+        public bool isRGB = false;
+        private CompGlower compGlower;
 
+        private List<Tuple<Effecter, TargetInfo, TargetInfo>> maintainedEffecters = new List<Tuple<Effecter, TargetInfo, TargetInfo>>();
 
-        // Cache the loaded texture
-        private Texture2D _cachedBladeTexture;
+        private bool dirty;
+        private Map map;
+        private float curRadius;
+        private IntVec3 prevPosition;
 
 
         // Blade Lengths
@@ -64,6 +70,7 @@ namespace Lightsaber
         private float stanceRotation;
         private Vector3 drawOffset;
 
+
         public Vector3 currentDrawOffset;
         public Vector3 targetDrawOffset;
         public Vector3 currentScaleForCore1AndBlade1 = Vector3.zero;
@@ -86,7 +93,8 @@ namespace Lightsaber
         // Utility
         private const int TicksPerGlowerUpdate = 60;
         public float scaleTimer;
-        public MaterialPropertyBlock propertyBlock;
+        public static readonly MaterialPropertyBlock propertyBlock = new();
+        public MaterialPropertyBlock PropertyBlock => propertyBlock;
         public bool isFlipped = false;
 
         // Properties
@@ -102,11 +110,27 @@ namespace Lightsaber
             set => animationDeflectionTicks = value;
         }
 
+        private Pawn cachedWearer;
+
         public Pawn Wearer
         {
             get
             {
-                return parent?.ParentHolder?.ParentHolder as Pawn;
+                if (cachedWearer != null && parent.ParentHolder != cachedWearer)
+                {
+                    cachedWearer = null;
+                }
+                if (cachedWearer != null && cachedWearer.Spawned)
+                    return cachedWearer;
+
+                if (parent?.ParentHolder is Pawn_EquipmentTracker tracker)
+                    cachedWearer = tracker.pawn;
+                else if (parent?.ParentHolder is Pawn_InventoryTracker inventory)
+                    cachedWearer = inventory.pawn;
+                else
+                    cachedWearer = null;
+
+                return cachedWearer;
             }
         }
 
@@ -127,8 +151,6 @@ namespace Lightsaber
         public override void Initialize(CompProperties props)
         {
             base.Initialize(props);
-            propertyBlock = new MaterialPropertyBlock();
-
             _hiltManager = new HiltManager();
             if (props is CompProperties_LightsaberBlade lightsaberProps)
             {
@@ -172,6 +194,223 @@ namespace Lightsaber
             return graphicField;
         }
 
+        private float hue = 0f;
+        private const float HueChangeRate = 1f;
+
+       
+        public override void CompTickInterval(int delta)
+        {
+            if (parent.MapHeld != null)
+            {
+                if (map == null)
+                {
+                    map = parent.MapHeld;
+                    dirty = true;
+                }
+                if (prevPosition != parent.PositionHeld)
+                {
+                    prevPosition = parent.PositionHeld;
+                    dirty = true;
+                }
+                bool shouldGlow = ShouldGlow();
+                if ((compGlower == null && shouldGlow) || !shouldGlow)
+                {
+                    dirty = true;
+                }
+                if (dirty)
+                {
+                    UpdateGlower();
+                    dirty = false;
+                }
+
+                if (Wearer != null && Wearer.MapHeld != null)
+                {
+                    if (parent.MapHeld.weatherManager.curWeather.rainRate > 0 && PawnRenderUtility.CarryWeaponOpenly(Wearer))
+                    {
+                        Vector3 spawnOffset = Wearer.Position.ToVector3();
+                        Vector3 spawnPos = spawnOffset;
+                        spawnPos = new Vector3(
+                                   Mathf.Round(spawnPos.x),
+                                   Mathf.Round(spawnPos.y),
+                                   Mathf.Round(spawnPos.z)
+                               );
+
+                        float steamAngle = CurrentRotation + Rand.Range(-15f, 15f);
+                        if (Find.TickManager.TicksGame % Rand.RangeInclusive(60, 300) == 0)
+                        {
+                            Effecter effecter = new Effecter(LightsaberDefOf.Force_SteamVapor);
+                            effecter.scale = 0.25f;
+                            effecter.offset = CurrentDrawOffset;
+                            effecter.Trigger(new TargetInfo(spawnPos.ToIntVec3(), Wearer.Map), TargetInfo.Invalid);
+                            effecter.Cleanup();
+
+                            if (DebugSettings.godMode)
+                                Log.Message($"Lightning at {spawnPos} (Rounded)");
+                        }
+                    }
+                    if (isRGB)
+                    {
+                        hue += HueChangeRate / 360f;
+                        if (hue >= 1f) hue = 0f;
+                        bladeColor = Color.HSVToRGB(hue, 1f, 1f);
+                        bladeColor2 = bladeColor;
+                        // Update shader properties with new colors
+                        SetShaderProperties();
+                    }
+
+                }
+
+                if (Wearer != null && Wearer.MapHeld != null && PawnRenderUtility.CarryWeaponOpenly(Wearer) && !IsThrowingWeapon)
+                {
+                    if (HiltManager.SelectedHiltParts != null)
+                    {
+                        foreach (var hiltPart in HiltManager.SelectedHiltParts)
+                        {
+                            if (hiltPart?.effects == null) continue;
+
+                            Vector3 spawnOffset = Wearer.Position.ToVector3();
+                            Vector3 spawnPos = spawnOffset;
+                            spawnPos = new Vector3(
+                                Mathf.Round(spawnPos.x),
+                                Mathf.Round(spawnPos.y),
+                                Mathf.Round(spawnPos.z)
+                            );
+
+                            float steamAngle = CurrentRotation + Rand.Range(-15f, 15f);
+
+                            foreach (var hiltEffect in hiltPart.effects)
+                            {
+                                if (hiltEffect?.EffecterDef == null) continue;
+
+                                if (hiltEffect.shouldMaintain && Find.TickManager.TicksGame % Rand.RangeInclusive(
+    hiltEffect.EffecterDef.maintainTicks != 0 ? hiltEffect.EffecterDef.maintainTicks : (int)hiltEffect.minTime,
+    hiltEffect.EffecterDef.maintainTicks != 0 ? hiltEffect.EffecterDef.maintainTicks : (int)hiltEffect.maxTime) == 0)
+                                {
+                                    Effecter effecter = new Effecter(hiltEffect.EffecterDef);
+                                    effecter.offset = CurrentDrawOffset;
+                                    effecter.offset.RotatedBy(CurrentRotation);
+                                    effecter.def.SpawnMaintained(spawnPos.ToIntVec3(), Wearer.Map);
+                                    effecter?.EffectTick(parent, parent);
+                                    if (DebugSettings.godMode)
+                                    {
+                                        Log.Message($"[Hilt Effects] Spawning {hiltPart.label}'s " +
+                                                   $"{hiltEffect.EffecterDef.defName} at {spawnPos} " +
+                                                   $"(Interval: {hiltEffect.ticksToMaintain} ticks)");
+                                    }
+                                }
+
+
+                                else if (Find.TickManager.TicksGame % Rand.RangeInclusive(
+                                     Mathf.RoundToInt(hiltEffect.minTime),
+                                     Mathf.RoundToInt(hiltEffect.maxTime)) == 0 && !hiltEffect.shouldMaintain)
+                                {
+                                    Effecter effecter = new Effecter(hiltEffect.EffecterDef);
+                                    effecter.offset = CurrentDrawOffset;
+                                    effecter.offset.RotatedBy(CurrentRotation);
+
+                                    effecter.Trigger(
+                                        new TargetInfo(spawnPos.ToIntVec3(), Wearer.Map),
+                                        new TargetInfo(spawnPos.ToIntVec3(), Wearer.Map)
+                                    );
+
+                                    effecter.Cleanup();
+
+                                    if (DebugSettings.godMode)
+                                    {
+                                        Log.Message($"[Hilt Effects] Spawning {hiltPart.label}'s " +
+                                                   $"{hiltEffect.EffecterDef.defName} at {spawnPos} " +
+                                                   $"(Interval: {hiltEffect.minTime}-{hiltEffect.maxTime} ticks)");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        public void AddEffecterToMaintain(Effecter eff, IntVec3 posA, IntVec3 posB, int ticks, Map map = null)
+        {
+            eff.ticksLeft = ticks;
+            TargetInfo item = new TargetInfo(posA, map ?? Wearer.Map);
+            TargetInfo item2 = new TargetInfo(posB, map ?? Wearer.Map);
+            maintainedEffecters.Add(new Tuple<Effecter, TargetInfo, TargetInfo>(eff, item, item2));
+        }
+
+
+        private IntVec3 GetPosition() => Wearer != null ? Wearer.Position : parent.PositionHeld;
+
+        public bool ShouldGlow()
+        {
+            if (Wearer != null && parent.MapHeld != null)
+            {
+                IntVec3 positionHeld = GetPosition();
+                if (positionHeld.InBounds(parent.MapHeld) && PawnRenderUtility.CarryWeaponOpenly(Wearer) && !IsThrowingWeapon && ForceLightsabers_ModSettings.shouldGlow)
+                {
+                    return true;
+                }
+            }
+            RemoveGlower(parent.MapHeld);
+            return false;
+        }
+
+        private void UpdateGlower()
+        {
+            IntVec3 position = GetPosition();
+            position.y += (int)1f;
+            Map mapHeld = parent.MapHeld;
+            if (mapHeld == null || !position.IsValid || mapHeld.glowGrid == null)
+            {
+                RemoveGlower(mapHeld);
+                return;
+            }
+            RemoveGlower(mapHeld);
+            if (ShouldGlow())
+            {
+                try
+                {
+                    compGlower = new CompGlower();
+                    var glowerProps = new CompProperties_Glower
+                    {
+                        glowColor = new ColorInt(bladeColor),
+                        glowRadius = 1.5f,
+                        overlightRadius = 1.5f
+                    };
+
+                    compGlower.parent = Wearer ?? parent;
+                    compGlower.Initialize(glowerProps);
+
+                    mapHeld.glowGrid.RegisterGlower(compGlower);
+                    mapHeld.mapDrawer.MapMeshDirty(position, MapMeshFlagDefOf.Things);
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"Failed to update lightsaber glower: {ex}");
+                    compGlower = null;
+                }
+            }
+        }
+
+
+        private void RemoveGlower(Map prevMap)
+        {
+            if (prevMap != null && compGlower != null && prevMap.glowGrid != null)
+            {
+                try
+                {
+                    prevMap.glowGrid.DeRegisterGlower(compGlower);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning($"Failed to remove lightsaber glower: {ex}");
+                }
+                finally
+                {
+                    compGlower = null;
+                }
+            }
+        }
+
         public void SetShaderProperties()
         {
             if (bladeGraphic == null) return;
@@ -189,6 +428,7 @@ namespace Lightsaber
             propertyBlock.SetFloat(ShaderPropertyIDAddon.MainTexScale2, bladeLength2);
             propertyBlock.SetFloat(ShaderPropertyIDAddon.GlowSpeed1, vibrationrate);
             propertyBlock.SetFloat(ShaderPropertyIDAddon.GlowSpeed2, vibrationrate2);
+            
 
             if (Props.bladeGraphicData?.shaderParameters != null)
             {
@@ -225,7 +465,8 @@ namespace Lightsaber
 
         private void SetColors(ModExtension_LightsaberPresets modExt = null)
         {
-            // First set up hilt parts if we have preferences
+
+
             if (modExt != null && modExt.preferredHiltParts != null && modExt.preferredHiltParts.Count > 0)
             {
                 var allHiltParts = DefDatabase<HiltPartDef>.AllDefsListForReading;
@@ -263,8 +504,19 @@ namespace Lightsaber
                     .ToList();
             }
 
+
+
+            Color? crystalColor = null;
+
             HiltPartDef crystalPart = HiltManager.SelectedHiltParts.FirstOrDefault(p => p.colorGenerator != null);
-            Color? crystalColor = crystalPart?.colorGenerator?.NewRandomizedColor();
+            if (crystalPart == LightsaberDefOf.Force_SyntheticKyberCrystalHiltPart)
+            {
+                crystalColor = ColorUtility.GetSyntheticCrystalColor(Wearer);
+            }
+            else
+            {
+                crystalColor = crystalPart?.colorGenerator?.NewRandomizedColor();
+            }
 
             if (modExt?.bladeColors != null && modExt.bladeColors.Any())
             {
@@ -280,8 +532,16 @@ namespace Lightsaber
             }
 
             HiltPartDef crystalPart2 = HiltManager.SelectedHiltParts.FirstOrDefault(p => p.colorGenerator2 != null);
-            Color? crystalColor2 = crystalPart?.colorGenerator2?.NewRandomizedColor();
+            Color? crystalColor2 = null;
 
+            if (crystalPart == LightsaberDefOf.Force_SyntheticKyberCrystalHiltPart)
+            {
+                crystalColor2 = ColorUtility.GetSyntheticCrystalColor(Wearer);
+            }
+            else
+            {
+                crystalColor2 = crystalPart?.colorGenerator?.NewRandomizedColor();
+            }
             if (modExt?.coreColors != null && modExt.coreColors.Any())
             {
                 coreColor = modExt.coreColors.RandomElement();
@@ -356,6 +616,73 @@ namespace Lightsaber
             {
                 HiltManager.SelectedHilt = Props.availableHiltGraphics.RandomElement();
             }
+
+            CompUniqueWeapon uniqueWeaponComp = null;
+            CompBladelinkWeapon bladelinkWeaponComp = null;
+
+            bool hasUniqueWeapon = ModLister.CheckOdyssey("Unique Weapons") && parent.TryGetComp(out uniqueWeaponComp);
+            bool hasBladelinkWeapon = ModLister.CheckRoyalty("Persona weapon") && parent.TryGetComp(out bladelinkWeaponComp);
+
+            if (ModLister.CheckOdyssey("Unique Weapons") &&
+            hasUniqueWeapon || ModLister.CheckRoyalty("Persona weapon") && hasBladelinkWeapon)
+            {
+                // Check if any traits are LightsaberPresetDef
+                LightsaberPresetDef lightsaberPresetTrait = null;
+
+                if (uniqueWeaponComp != null)
+                {
+                    lightsaberPresetTrait = uniqueWeaponComp.TraitsListForReading
+                        .FirstOrDefault(trait => trait is LightsaberPresetDef) as LightsaberPresetDef;
+                }
+
+                if (lightsaberPresetTrait == null && bladelinkWeaponComp != null)
+                {
+                    lightsaberPresetTrait = bladelinkWeaponComp.TraitsListForReading?
+                        .FirstOrDefault(trait => trait is LightsaberPresetDef) as LightsaberPresetDef;
+                }
+
+                if (lightsaberPresetTrait?.LightsaberPreset != null)
+                {
+                    var presetHiltParts = lightsaberPresetTrait.LightsaberPreset.preferredHiltParts;
+                    if (presetHiltParts != null && presetHiltParts.Count > 0)
+                    {
+                        var allHiltParts = DefDatabase<HiltPartDef>.AllDefsListForReading;
+
+                        // Filter only valid parts that exist in the database
+                        var validPresetParts = presetHiltParts
+                            .Where(part => part != null && allHiltParts.Contains(part))
+                            .Distinct()
+                            .ToList();
+
+                        if (validPresetParts.Any())
+                        {
+                            HiltManager.SelectedHiltParts = AllowedCategories
+                                .Select(category =>
+                                    validPresetParts.FirstOrDefault(def => def.category == category))
+                                .Where(part => part != null)
+                                .ToList();
+                        }
+                    }
+
+                    var matchingHilts = lightsaberPresetTrait.LightsaberPreset.preferredHilts
+               .Where(hilt => Props.availableHiltGraphics.Contains(hilt))
+               .ToList();
+
+                    if (matchingHilts.Any())
+                    {
+                        HiltManager.SelectedHilt = matchingHilts.FirstOrDefault();
+                    }
+
+                    HiltManager.HiltColorOne = lightsaberPresetTrait?.LightsaberPreset.HiltColor1 ?? default;
+                    HiltManager.HiltColorTwo = lightsaberPresetTrait?.LightsaberPreset.HiltColor2 ?? default;
+                    bladeColor = lightsaberPresetTrait?.LightsaberPreset.BladeColor1 ?? default;
+                    bladeColor2 = lightsaberPresetTrait?.LightsaberPreset?.BladeColor2 ?? default;
+                    coreColor = lightsaberPresetTrait?.LightsaberPreset.CoreColor1 ?? default;
+                    coreColor2 = lightsaberPresetTrait?.LightsaberPreset.CoreColor2 ?? default;
+                }
+            }
+
+            
         }
 
         private Color GetRandomRGBColor()
@@ -431,6 +758,13 @@ namespace Lightsaber
 
             Scribe_Values.Look(ref stanceRotation, "stanceRotation", 0f);
             Scribe_Values.Look(ref drawOffset, "drawOffset", Vector3.zero);
+
+            Pawn wearer = null;
+            if (Scribe.mode == LoadSaveMode.Saving)
+            {
+                wearer = Wearer;
+            }
+            Scribe_References.Look(ref wearer, "wearer");
         }
 
         #endregion
@@ -439,38 +773,94 @@ namespace Lightsaber
 
         public IEnumerable<Gizmo> EquippedGizmos()
         {
-            foreach (Gizmo gizmo in base.CompGetGizmosExtra())
+            // Return if critical objects are null
+            if (Wearer == null || parent == null || Props == null)
             {
-                yield return gizmo;
+                yield break;
             }
 
-            yield return new Command_Action
+            // Safely return base gizmos
+            var baseGizmos = base.CompGetGizmosExtra();
+            if (baseGizmos != null)
             {
-                defaultLabel = "Customize Lightsaber",
-                defaultDesc = "Customize the blade lengths, colors, and hilt of the lightsaber.",
-                icon = ContentFinder<Texture2D>.Get("UI/Icons/Gizmo/LightsaberCustomization"),
-                action = () =>
+                foreach (Gizmo gizmo in baseGizmos)
                 {
-                    Find.WindowStack.Add(new Dialog_LightsaberCustomization(
-                        Wearer,
-                        this,
-                        (bladeColor, coreColor, bladeColor2, coreColor2) =>
-                        {
-                            this.bladeColor = bladeColor;
-                            this.coreColor = coreColor;
-                            this.bladeColor2 = bladeColor2;
-                            this.coreColor2 = coreColor2;
-
-                            SetShaderProperties();
-                        }
-                    ));
+                    if (gizmo != null) yield return gizmo;
                 }
-            };
+            }
+
+            bool showCustomization = (Wearer.Drafted && (!ForceLightsabers_ModSettings.lightsaberCustomizationUndrafted)) ||
+                                   (!Wearer.Drafted && (ForceLightsabers_ModSettings.lightsaberCustomizationUndrafted));
+
+            if (showCustomization)
+            {
+                yield return new Command_Action
+                {
+                    defaultLabel = "Customize Lightsaber",
+                    defaultDesc = "Customize the blade lengths, colors, and hilt of the lightsaber.",
+                    icon = ContentFinder<Texture2D>.Get("UI/Icons/Gizmo/LightsaberCustomization", false) ?? BaseContent.BadTex,
+                    action = () =>
+                    {
+                        Find.WindowStack.Add(new Dialog_LightsaberCustomization(
+                            Wearer,
+                            this,
+                            (bladeColor, coreColor, bladeColor2, coreColor2) =>
+                            {
+                                this.bladeColor = bladeColor;
+                                this.coreColor = coreColor;
+                                this.bladeColor2 = bladeColor2;
+                                this.coreColor2 = coreColor2;
+                                SetShaderProperties();
+                            }
+                        ));
+                    }
+                };
+            }
+
+            if (Wearer != null && Prefs.DevMode && DebugSettings.godMode)
+            {
+                yield return new Command_Action
+                {
+                    defaultLabel = "Spin Lightsaber",
+                    defaultDesc = "Perform a spinning lightsaber animation that can deflect incoming projectiles.",
+                    icon = ContentFinder<Texture2D>.Get("UI/Icons/Gizmo/LightsaberSpin", false) ?? BaseContent.BadTex,
+                    action = () =>
+                    {
+                        // Start spinning animation
+                        StartSpinAnimation();
+                    },
+                    hotKey = KeyBindingDefOf.Misc2
+                };
+
+                yield return new Command_Toggle
+                {
+                    defaultLabel = "RGB Mode",
+                    defaultDesc = "Toggle rainbow color cycling mode",
+                    icon = ContentFinder<Texture2D>.Get("UI/Icons/Gizmo/LightsaberRGB", false) ?? BaseContent.BadTex,
+                    isActive = () => isRGB,
+                    toggleAction = () =>
+                    {
+                        isRGB = !isRGB;
+                        if (!isRGB) hue = 0f;
+                    },
+                    hotKey = KeyBindingDefOf.Misc3
+                };
+            }
         }
+
+
+        private void StartSpinAnimation()
+        {
+            if (Wearer == null) return;
+            AnimationDeflectionTicks = 6000;
+        }
+
 
         #endregion
 
         #region Combat and Effects
+
+        public List<PawnRenderNode> activeRenderNodes;
 
         public override void Notify_Equipped(Pawn pawn)
         {
@@ -489,7 +879,76 @@ namespace Lightsaber
             {
                 InitializeColors();
             }
+
+            if (!UnityData.IsInMainThread)
+            {
+                return;
+            }
+            else
+            {
+                activeRenderNodes = CompRenderNodes();
+                pawn.Drawer?.renderer?.renderTree?.SetDirty();
+            }
         }
+
+        public override void Notify_Unequipped(Pawn pawn)
+        {
+            base.Notify_Unequipped(pawn);
+
+            if (cachedWearer == pawn)
+            {
+                cachedWearer = null;
+            }
+
+            RemoveGlower(pawn.MapHeld);
+            activeRenderNodes = null;
+        }
+
+        public override List<PawnRenderNode> CompRenderNodes()
+        {
+            try
+            {
+                if (!Props.renderNodeProperties.NullOrEmpty() &&
+                    parent != null &&
+                    parent.ParentHolder != null &&
+                    parent.ParentHolder.ParentHolder is Pawn pawn)
+                {
+                    List<PawnRenderNode> list = new List<PawnRenderNode>();
+                    foreach (PawnRenderNodeProperties renderNodeProperty in Props.renderNodeProperties)
+                    {
+                        if (renderNodeProperty?.nodeClass != null && pawn.Drawer?.renderer?.renderTree != null)
+                        {
+                            try
+                            {
+                                PawnRenderNode node = (PawnRenderNode)Activator.CreateInstance(
+                                    renderNodeProperty.nodeClass,
+                                    pawn,
+                                    renderNodeProperty,
+                                    pawn.Drawer.renderer.renderTree
+                                );
+                                if (node != null)
+                                {
+                                    list.Add(node);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Log.Error($"Failed to create render node: {ex}");
+                            }
+                        }
+                    }
+                    return list;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"Error in CompRenderNodes: {ex}");
+            }
+
+            return base.CompRenderNodes();
+        }
+
+
 
         public void ForceUpdateScaling()
         {
@@ -557,10 +1016,11 @@ namespace Lightsaber
         {
             isFlipped = flipped;
         }
-
         #endregion
 
     }
+
+
 
 
     public class CompProperties_LightsaberBlade : CompProperties
@@ -574,6 +1034,7 @@ namespace Lightsaber
         public List<SoundDef> lightsaberSound;
         public List<HiltDef> availableHiltGraphics;
         public List<HiltPartCategoryDef> allowedCategories;
+        public List<PawnRenderNodeProperties> renderNodeProperties;
         public CompProperties_LightsaberBlade()
         {
             this.compClass = typeof(Comp_LightsaberBlade);

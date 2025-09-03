@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.UIElements;
 using Verse;
 
 namespace Lightsaber
@@ -23,6 +24,8 @@ namespace Lightsaber
         public float? archDuration;
         public float orbitSnapStrength;
 
+        private Vector3 position;
+
         public const float MinSpeed = 0.05f;
         public const float MinOrbitSpeed = 0.3f;
 
@@ -32,6 +35,11 @@ namespace Lightsaber
 
         public FleckThrownSpark()
         {
+        }
+
+        public Vector3 GetPosition()
+        {
+            return position;
         }
 
         public bool Flying => airTimeLeft > 0f;
@@ -193,5 +201,9 @@ namespace Lightsaber
 
     public class FleckSystemThrownSparks : FleckSystemBase<FleckThrownSpark>
     {
+        public FleckSystemThrownSparks(FleckManager parent)
+        : base(parent)
+        {
+        }
     }
 }
