@@ -33,7 +33,7 @@ namespace Lightsaber
             public static bool DrawEquipmentAimingPreFix(Thing eq, Vector3 drawLoc, float aimAngle)
             {
                 var eqPrimary = eq;
-                if (meleeAnimationModActive || eqPrimary == null || eqPrimary.def?.graphicData == null || Find.CameraDriver.CurrentZoom == CameraZoomRange.Furthest || !Find.CameraDriver.InViewOf(eqPrimary))
+                if (meleeAnimationModActive || eqPrimary == null || eqPrimary.def?.graphicData == null || Find.CameraDriver.CurrentZoom == CameraZoomRange.Furthest)
                 {
                     return true;
                 }
@@ -41,13 +41,14 @@ namespace Lightsaber
                 var compLightsaberBlade = compCache.GetCachedComp(eqPrimary);
                 var compLightsaberStance = eqPrimary.TryGetComp<Comp_LightsaberStance>();
 
-                // If either component exists, do lightsaber drawing
                 if (compLightsaberBlade != null || compLightsaberStance != null)
                 {
                     // Get the pawn holding the equipment
                     var pawn = (eq.ParentHolder as Pawn_EquipmentTracker)?.pawn;
-
-                    // Use blade component's rotation if available, otherwise use default behavior
+                    if (!Find.CameraDriver.InViewOf(pawn))
+                    {
+                        return true;
+                    }
                     float currentRotation = compLightsaberBlade?.CurrentRotation ?? 0f;
 
                     var flip = false;

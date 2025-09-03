@@ -192,6 +192,8 @@ namespace Lightsaber
 
             // Get the blade graphic's material
             Material bladeMat = compLightsaberBlade.BladeGraphic.MatSingle;
+            MaterialPropertyBlock propertyBlock = Comp_LightsaberBlade.propertyBlock;
+            compLightsaberBlade.SetShaderProperties();
 
             // Draw the blade mesh
             Graphics.DrawMesh(
@@ -202,7 +204,7 @@ namespace Lightsaber
                 0,
                 null,
                 0,
-                compLightsaberBlade.PropertyBlock
+                propertyBlock
             );
 
         }

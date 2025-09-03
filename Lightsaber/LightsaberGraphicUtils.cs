@@ -19,12 +19,41 @@ namespace Lightsaber
         public static Quaternion rotationCache;
         private static Mesh meshCache;
         private static Mesh meshFlipCache;
-
         private static float? previousAngle;
 
         // Cached offset
         private static readonly Vector3 bladeOffset = new Vector3(0f, BladeYOffset, 0f);
         private static readonly Vector3 hiltOffset = new Vector3(0f, HiltYOffset, 0f);
+
+        // Cached Type references
+        private static readonly Type smyhType = Type.GetType("ShowMeYourHands.ShowMeYourHandsMain, ShowMeYourHands");
+        private static readonly Type tupleType = Type.GetType("System.Tuple`2[[UnityEngine.Vector3, UnityEngine.CoreModule],[System.Single, mscorlib]], mscorlib");
+
+        // Cached FieldInfo
+        private static FieldInfo weaponLocationsField;
+        private static bool weaponLocationsFieldInitialized;
+        private static readonly object weaponLocationsLock = new object();
+
+        static LightsaberGraphicsUtil()
+        {
+            // Initialize cached field info
+            InitializeWeaponLocationsField();
+        }
+
+        private static void InitializeWeaponLocationsField()
+        {
+            if (smyhType != null && !weaponLocationsFieldInitialized)
+            {
+                lock (weaponLocationsLock)
+                {
+                    if (!weaponLocationsFieldInitialized)
+                    {
+                        weaponLocationsField = smyhType.GetField("weaponLocations", BindingFlags.Public | BindingFlags.Static);
+                        weaponLocationsFieldInitialized = true;
+                    }
+                }
+            }
+        }
 
         public static void DrawLightsaberGraphics(Thing eq, Vector3 drawLoc, float angle, bool flip, Comp_LightsaberBlade compLightsaberBlade)
         {
@@ -41,63 +70,59 @@ namespace Lightsaber
                 return;
             }
 
-            // Update scaling and offset
             compLightsaberBlade.UpdateScalingAndOffset();
 
-            // Cache rotation if angle changed
             if (!previousAngle.HasValue || Math.Abs(angle - previousAngle.Value) > 0.01f)
             {
                 rotationCache = Quaternion.AngleAxis(angle, Vector3.up);
                 previousAngle = angle;
             }
 
-            // Initialize meshes if not already initialized
             meshCache ??= MeshPool.plane10;
             meshFlipCache ??= MeshPool.plane10Flip;
             Mesh currentMesh = flip ? meshFlipCache : meshCache;
             Mesh bladeMesh = flip ? meshFlipCache : meshCache;
-            
 
-            // Calculate draw locations
+
             Vector3 bladeDrawLoc = drawLoc + bladeOffset;
             Vector3 hiltDrawLoc = drawLoc + hiltOffset;
 
             try
             {
-                Type smyhType = Type.GetType("ShowMeYourHands.ShowMeYourHandsMain, ShowMeYourHands");
-                var weaponLocations = smyhType?.GetField("weaponLocations", BindingFlags.Public | BindingFlags.Static)?.GetValue(null) as IDictionary;
-
-                if (weaponLocations != null)
+                if (smyhType != null && weaponLocationsField != null)
                 {
-                    var tupleType = Type.GetType("System.Tuple`2[[UnityEngine.Vector3, UnityEngine.CoreModule],[System.Single, mscorlib]], mscorlib");
-                    object tuple;
+                    var weaponLocations = weaponLocationsField.GetValue(null) as IDictionary;
 
-                    if (flip == true)
+                    if (weaponLocations != null && tupleType != null)
                     {
-                        tuple = Activator.CreateInstance(tupleType, hiltDrawLoc, -angle);
-                    }
-                    else
-                    {
-                        tuple = Activator.CreateInstance(tupleType, hiltDrawLoc, angle);
-                    }
+                        object tuple;
 
-                    weaponLocations[eq] = tuple;
+                        if (flip == true)
+                        {
+                            tuple = Activator.CreateInstance(tupleType, hiltDrawLoc, -angle);
+                        }
+                        else
+                        {
+                            tuple = Activator.CreateInstance(tupleType, hiltDrawLoc, angle);
+                        }
+
+                        weaponLocations[eq] = tuple;
+                    }
                 }
             }
             catch (Exception ex)
             {
-                // You should at least log the exception for debugging
-                // Console.WriteLine(ex.ToString());
+                Log.Error($"Error in ShowMeYourHands integration: {ex}");
             }
 
             if (compLightsaberBlade?.Wearer == null) return;
             var wearer = compLightsaberBlade.Wearer;
+            MaterialPropertyBlock propertyBlock = Comp_LightsaberBlade.propertyBlock;
+            compLightsaberBlade.SetShaderProperties();
             if (wearer != null && wearer.health?.hediffSet?.GetFirstHediffOfDef(LightsaberDefOf.Force_LightsaberShortCircuit) == null)
             {
                 // Get the appropriate mesh for the current rotation
                 Mesh bladeRenderMesh = bladeGraphic.MeshAt(wearer.Rotation);
-
-                // Create the blade matrix with proper flip handling
                 var bladeMatrix = Matrix4x4.TRS(
                     bladeDrawLoc,
                     flip ? Quaternion.AngleAxis(-angle, Vector3.up) : rotationCache,
@@ -114,7 +139,7 @@ namespace Lightsaber
                     0,
                     null,
                     0,
-                    compLightsaberBlade.PropertyBlock ?? new MaterialPropertyBlock()
+                    propertyBlock
                 );
             }
 

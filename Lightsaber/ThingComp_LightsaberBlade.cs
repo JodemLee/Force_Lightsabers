@@ -11,6 +11,7 @@ using static RimWorld.EffecterMaintainer;
 
 namespace Lightsaber
 {
+    [StaticConstructorOnStartup]
     public class Comp_LightsaberBlade : ThingComp
     {
         #region Fields and Properties
@@ -26,6 +27,7 @@ namespace Lightsaber
 
         private List<Tuple<Effecter, TargetInfo, TargetInfo>> maintainedEffecters = new List<Tuple<Effecter, TargetInfo, TargetInfo>>();
 
+        private Texture2D _cachedBladeTexture;
         private bool dirty;
         private Map map;
         private float curRadius;
@@ -94,7 +96,6 @@ namespace Lightsaber
         private const int TicksPerGlowerUpdate = 60;
         public float scaleTimer;
         public static readonly MaterialPropertyBlock propertyBlock = new();
-        public MaterialPropertyBlock PropertyBlock => propertyBlock;
         public bool isFlipped = false;
 
         // Properties
@@ -151,6 +152,7 @@ namespace Lightsaber
         public override void Initialize(CompProperties props)
         {
             base.Initialize(props);
+
             _hiltManager = new HiltManager();
             if (props is CompProperties_LightsaberBlade lightsaberProps)
             {
@@ -342,7 +344,7 @@ namespace Lightsaber
 
         public bool ShouldGlow()
         {
-            if (Wearer != null && parent.MapHeld != null)
+            if (Wearer != null && parent.MapHeld != null && !Find.CameraDriver.InViewOf(Wearer))
             {
                 IntVec3 positionHeld = GetPosition();
                 if (positionHeld.InBounds(parent.MapHeld) && PawnRenderUtility.CarryWeaponOpenly(Wearer) && !IsThrowingWeapon && ForceLightsabers_ModSettings.shouldGlow)

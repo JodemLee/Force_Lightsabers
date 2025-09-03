@@ -178,7 +178,8 @@ namespace Lightsaber
                 base.PostDraw(node, parms, mesh, matrix);
                 return;
             }
-
+            MaterialPropertyBlock propertyBlock = Comp_LightsaberBlade.propertyBlock;
+            
             // Draw blade using exact same matrix
             if (weaponNode.BladeMaterial != null)
             {
@@ -194,7 +195,7 @@ namespace Lightsaber
                     matrix.rotation,
                     matrix.lossyScale
                 );
-
+                lightsaberComp.SetShaderProperties();
                 Graphics.DrawMesh(
                     MeshPool.plane10,
                     bladeMatrix,
@@ -202,7 +203,7 @@ namespace Lightsaber
                     0,
                     null,
                     0,
-                    lightsaberComp.PropertyBlock
+                    propertyBlock
                 );
             }
 
